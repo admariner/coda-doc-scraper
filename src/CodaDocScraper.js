@@ -2,8 +2,7 @@ import React, { useState, useEffect } from 'react';
 import useCodaApi from './hooks/useCodaApi';
 import InputForm from './components/InputForm';
 import TableSelector from './components/TableSelector';
-import DataDisplay from './components/DataDisplay';
-import ExportButtons from './components/ExportButtons';
+import DataDisplay from './components/DataDisplay/DataDisplay'; // Updated import
 import LoadingSpinner from './components/LoadingSpinner';
 import ErrorDisplay from './components/ErrorDisplay';
 
@@ -15,7 +14,7 @@ const CodaDocScraper = () => {
   const [isFetchingTables, setIsFetchingTables] = useState(false);
   const [isFetchingData, setIsFetchingData] = useState(false);
 
-  const { rows, tables, loading, error, fetchData, fetchTables, setError } = useCodaApi();
+  const { rows, tables, columns, loading, error, fetchData, fetchTables, setError } = useCodaApi();
 
   // Load saved config from localStorage
   useEffect(() => {
@@ -80,7 +79,7 @@ const CodaDocScraper = () => {
           <button
             onClick={handleFetchTables}
             disabled={isFetchingTables || loading}
-            className="w-full px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 disabled:bg-blue-300"
+            className="w-full max-w-xs px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 disabled:bg-blue-300"
           >
             {isFetchingTables || loading ? 'Fetching Tables...' : 'Fetch Tables'}
           </button>
@@ -95,17 +94,14 @@ const CodaDocScraper = () => {
           />
         )}
 
-        {/* Row count selector (only shown after tables are selected) */}
+        {/* Row count selector */}
         {selectedTables.length > 0 && (
           <div className="mt-4">
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Number of Rows
               <select
                 value={rowCount}
-                onChange={(e) => {
-                  console.log('Row count changed:', e.target.value);
-                  setRowCount(e.target.value);
-                }}
+                onChange={(e) => setRowCount(e.target.value)}
                 className="w-full p-2 border rounded-md mt-1"
               >
                 <option value="0">0 (Just metadata)</option>
@@ -117,13 +113,13 @@ const CodaDocScraper = () => {
           </div>
         )}
 
-        {/* Fetch Data button (only shown after tables are selected) */}
+        {/* Fetch Data button */}
         {selectedTables.length > 0 && (
           <div className="mt-4">
             <button
               onClick={handleFetchData}
               disabled={isFetchingData || loading}
-              className="w-full px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 disabled:bg-green-300"
+              className="w-full max-w-xs px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 disabled:bg-green-300"
             >
               {isFetchingData || loading ? 'Fetching Data...' : 'Fetch Data'}
             </button>
@@ -137,11 +133,8 @@ const CodaDocScraper = () => {
         {error && <ErrorDisplay error={error} />}
 
         {/* Data display */}
-        {rows.length > 0 && (
-          <>
-            <DataDisplay rows={rows} />
-            <ExportButtons rows={rows} />
-          </>
+        {(rows.length > 0 || columns.length > 0) && (
+          <DataDisplay rows={rows} columns={columns} />
         )}
       </div>
     </div>
