@@ -6,6 +6,7 @@ import DataDisplay from './components/DataDisplay/DataDisplay';
 import ErrorDisplay from './components/ErrorDisplay';
 import WelcomeCard from './components/WelcomeCard';
 import LoadingSpinner from './components/LoadingSpinner';
+import Header from './components/Header'; // Import the Header component
 
 const CodaDocScraper = () => {
   const [apiToken, setApiToken] = useState('');
@@ -67,6 +68,9 @@ const CodaDocScraper = () => {
   return (
     <div className="flex justify-center items-center min-h-screen bg-gray-50 p-4">
       <div className="w-full max-w-4xl space-y-6">
+        {/* Add the Header component */}
+        <Header />
+
         {/* Welcome Card */}
         <WelcomeCard />
 
@@ -104,7 +108,7 @@ const CodaDocScraper = () => {
         </div>
 
         {/* Section 2: Tables (Select, Num Rows, Fetch Data Button) */}
-        {tables.length > 0 ? (
+        {tables.length > 0 && (
           <div className="bg-white p-6 border rounded-lg shadow-md">
             <h2 className="text-lg font-bold mb-4">Tables</h2>
             <TableSelector
@@ -138,10 +142,6 @@ const CodaDocScraper = () => {
                 {isFetchingData && <LoadingSpinner />}
               </div>
             )}
-          </div>
-        ) : (
-          <div className="bg-white p-6 border rounded-lg shadow-md">
-            <p className="text-gray-700">No tables found in this document.</p>
           </div>
         )}
 
