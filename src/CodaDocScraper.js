@@ -1,15 +1,16 @@
-import React, { useState, useEffect } from "react";
-import useCodaApi from "./hooks/useCodaApi";
-import InputForm from "./components/InputForm";
-import TableSelector from "./components/TableSelector";
-import DataDisplay from "./components/DataDisplay/DataDisplay";
-import ErrorDisplay from "./components/ErrorDisplay";
-import WelcomeCard from "./components/WelcomeCard";
+import React, { useState, useEffect } from 'react';
+import useCodaApi from './hooks/useCodaApi';
+import InputForm from './components/InputForm';
+import TableSelector from './components/TableSelector';
+import DataDisplay from './components/DataDisplay/DataDisplay';
+import ErrorDisplay from './components/ErrorDisplay';
+import WelcomeCard from './components/WelcomeCard';
+import LoadingSpinner from './components/LoadingSpinner';
 
 const CodaDocScraper = () => {
-  const [apiToken, setApiToken] = useState("");
-  const [docId, setDocId] = useState("");
-  const [rowCount, setRowCount] = useState("All");
+  const [apiToken, setApiToken] = useState('');
+  const [docId, setDocId] = useState('');
+  const [rowCount, setRowCount] = useState('All');
   const [selectedTables, setSelectedTables] = useState([]);
   const [isFetchingTables, setIsFetchingTables] = useState(false);
   const [isFetchingData, setIsFetchingData] = useState(false);
@@ -18,26 +19,26 @@ const CodaDocScraper = () => {
 
   // Load saved config from localStorage
   useEffect(() => {
-    const savedConfig = JSON.parse(localStorage.getItem("codaConfig") || "{}");
-    setApiToken(savedConfig.apiToken || "");
-    setDocId(savedConfig.docId || "");
+    const savedConfig = JSON.parse(localStorage.getItem('codaConfig') || '{}');
+    setApiToken(savedConfig.apiToken || '');
+    setDocId(savedConfig.docId || '');
   }, []);
 
   // Save config to localStorage
   useEffect(() => {
     const config = { apiToken, docId };
-    localStorage.setItem("codaConfig", JSON.stringify(config));
+    localStorage.setItem('codaConfig', JSON.stringify(config));
   }, [apiToken, docId]);
 
   // Clear fetched data when selected tables change
   useEffect(() => {
     setTableData({});
-  }, [selectedTables]);
+  }, [selectedTables, setTableData]);
 
   // Handle fetch tables button click
   const handleFetchTables = async () => {
     if (!apiToken || !docId) {
-      setError("Please provide an API Token and Document ID.");
+      setError('Please provide an API Token and Document ID.');
       return;
     }
 
@@ -49,7 +50,7 @@ const CodaDocScraper = () => {
   // Handle fetch data button click
   const handleFetchData = async () => {
     if (selectedTables.length === 0) {
-      setError("Please select at least one table.");
+      setError('Please select at least one table.');
       return;
     }
 
@@ -78,18 +79,32 @@ const CodaDocScraper = () => {
             docId={docId}
             setDocId={setDocId}
           />
-          <button
-            onClick={handleFetchTables}
-            disabled={isFetchingTables || loading || !apiToken || !docId}
-            className="w-full px-4 py-1.5 bg-blue-500 text-white rounded-md hover:bg-blue-600 disabled:bg-blue-300 disabled:cursor-not-allowed"
-            title={!apiToken || !docId ? "Please enter API Token and Document ID" : ""}
-          >
-            {isFetchingTables || loading ? "Fetching Tables..." : "Get Tables"}
-          </button>
+          <div className="flex space-x-4">
+            <button
+              onClick={handleFetchTables}
+              disabled={isFetchingTables || loading || !apiToken || !docId}
+              className="w-full px-4 py-1.5 bg-blue-500 text-white rounded-md hover:bg-blue-600 disabled:bg-blue-300 disabled:cursor-not-allowed"
+              title={!apiToken || !docId ? 'Please enter API Token and Document ID' : ''}
+            >
+              {isFetchingTables || loading ? 'Fetching Tables...' : 'Get Tables'}
+            </button>
+            <button
+              onClick={() => {
+                setApiToken('');
+                setDocId('');
+                setSelectedTables([]);
+                setTableData({});
+              }}
+              className="px-4 py-1.5 bg-gray-500 text-white rounded-md hover:bg-gray-600"
+            >
+              Reset
+            </button>
+          </div>
+          {isFetchingTables && <LoadingSpinner />}
         </div>
 
         {/* Section 2: Tables (Select, Num Rows, Fetch Data Button) */}
-        {tables.length > 0 && (
+        {tables.length > 0 ? (
           <div className="bg-white p-6 border rounded-lg shadow-md">
             <h2 className="text-lg font-bold mb-4">Tables</h2>
             <TableSelector
@@ -97,7 +112,6 @@ const CodaDocScraper = () => {
               selectedTables={selectedTables}
               setSelectedTables={setSelectedTables}
             />
-
             {/* Number of Rows Select and Fetch Data Button */}
             {selectedTables.length > 0 && (
               <div className="mt-4">
@@ -121,15 +135,28 @@ const CodaDocScraper = () => {
                 >
                   {isFetchingData || loading ? 'Fetching Data...' : 'Fetch Data'}
                 </button>
+                {isFetchingData && <LoadingSpinner />}
               </div>
             )}
+          </div>
+        ) : (
+          <div className="bg-white p-6 border rounded-lg shadow-md">
+            <p className="text-gray-700">No tables found in this document.</p>
           </div>
         )}
 
         {/* Section 3: Fetched Data (Copy/Export Buttons, Table Names, JSON) */}
         {selectedTables.length > 0 && Object.keys(tableData).length > 0 && (
           <div className="bg-white p-6 border rounded-lg shadow-md">
-            <h2 className="text-lg font-bold mb-4">Fetched Data</h2>
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-lg font-bold">Fetched Data</h2>
+              <button
+                onClick={() => setTableData({})}
+                className="px-4 py-1.5 bg-red-500 text-white rounded-md hover:bg-red-600"
+              >
+                Clear Data
+              </button>
+            </div>
             <DataDisplay tableData={tableData} selectedTables={selectedTables} tables={tables} />
           </div>
         )}

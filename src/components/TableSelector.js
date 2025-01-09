@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 
 const TableSelector = ({ tables, selectedTables, setSelectedTables }) => {
   const [isOpen, setIsOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const dropdownRef = useRef(null);
 
   // Close dropdown when clicking outside
@@ -18,20 +19,26 @@ const TableSelector = ({ tables, selectedTables, setSelectedTables }) => {
     };
   }, []);
 
+  // Filter tables based on search query
+  const filteredTables = tables.filter((table) =>
+    table.name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  // Handle checkbox change
   const handleCheckboxChange = (tableId) => {
     if (selectedTables.includes(tableId)) {
-      // Remove tableId if already selected
       setSelectedTables(selectedTables.filter((id) => id !== tableId));
     } else {
-      // Add tableId if not selected
       setSelectedTables([...selectedTables, tableId]);
     }
   };
 
+  // Handle select all
   const handleSelectAll = () => {
     setSelectedTables(tables.map((table) => table.id));
   };
 
+  // Handle select none
   const handleSelectNone = () => {
     setSelectedTables([]);
   };
@@ -68,6 +75,13 @@ const TableSelector = ({ tables, selectedTables, setSelectedTables }) => {
       {isOpen && (
         <div className="absolute z-50 mt-2 w-full bg-white border rounded-md shadow-lg max-h-60 overflow-y-auto">
           <div className="p-2 border-b">
+            <input
+              type="text"
+              placeholder="Search tables..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full px-4 py-2 mb-2 border rounded-md shadow-sm text-sm font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
             <button
               onClick={handleSelectAll}
               className="text-sm text-blue-500 hover:text-blue-600"
@@ -81,7 +95,7 @@ const TableSelector = ({ tables, selectedTables, setSelectedTables }) => {
               Select None
             </button>
           </div>
-          {tables.map((table) => (
+          {filteredTables.map((table) => (
             <label
               key={table.id}
               className="flex items-center p-2 hover:bg-gray-50 cursor-pointer"

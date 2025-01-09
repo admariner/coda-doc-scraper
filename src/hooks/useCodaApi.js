@@ -8,41 +8,39 @@ const useCodaApi = () => {
     const [error, setError] = useState(''); // Error message
 
     // Fetch tables from Coda API (only tables, not views)
-    const fetchTables = useCallback(async (apiToken, docId) => {
+    const fetchTables = useCallback(async (apiToken, docId, retries = 3) => {
         if (!apiToken || !docId) {
-            setError('Please provide an API Token and Document ID.');
-            return;
+          setError('Please provide an API Token and Document ID.');
+          return;
         }
-
+      
         setLoading(true);
         setError('');
-
+      
         try {
-            const tablesResponse = await axios.get(
-                `https://coda.io/apis/v1/docs/${docId}/tables`,
-                {
-                    headers: {
-                        Authorization: `Bearer ${apiToken}`,
-                    },
-                    params: {
-                        tableTypes: 'table', // Only fetch tables, not views
-                    },
-                }
-            );
-            setTables(tablesResponse.data.items); // Only tables are stored
-        } catch (err) {
-            console.error('Error fetching tables:', err);
-            if (err.response?.status === 401) {
-                setError('Invalid API Token. Please check your token and try again.');
-            } else if (err.response?.status === 404) {
-                setError('Document not found. Please check your Document ID.');
-            } else {
-                setError('Failed to fetch tables. Please try again.');
+          const tablesResponse = await axios.get(
+            `https://coda.io/apis/v1/docs/${docId}/tables`,
+            {
+              headers: {
+                Authorization: `Bearer ${apiToken}`,
+              },
+              params: {
+                tableTypes: 'table',
+              },
             }
+          );
+          setTables(tablesResponse.data.items);
+        } catch (err) {
+          if (retries > 0) {
+            setTimeout(() => fetchTables(apiToken, docId, retries - 1), 1000);
+          } else {
+            console.error('Error fetching tables:', err);
+            setError('Failed to fetch tables. Please try again.');
+          }
         } finally {
-            setLoading(false);
+          setLoading(false);
         }
-    }, []);
+      }, []);
 
     // Fetch data for a specific table
     const fetchData = useCallback(async (apiToken, docId, tableId, rowCount) => {

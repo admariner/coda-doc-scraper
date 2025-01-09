@@ -29,6 +29,8 @@ const InputField = ({ label, value, onChange, placeholder, helpText, isPassword 
 };
 
 const InputForm = ({ apiToken, setApiToken, docId, setDocId }) => {
+  const isFormValid = apiToken.trim() && docId.trim();
+
   return (
     <div className="space-y-4">
       <InputField
@@ -47,6 +49,9 @@ const InputForm = ({ apiToken, setApiToken, docId, setDocId }) => {
         helpText="Found in the URL of your Coda doc."
         isPassword={false}
       />
+      {!isFormValid && (
+        <p className="text-sm text-red-500"></p>
+      )}
     </div>
   );
 };
