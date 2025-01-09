@@ -1,19 +1,41 @@
 import React from 'react';
-import JsonViewer from './JsonViewer';
+import ReactJson from 'react-json-view';
 import ActionButtons from './ActionButtons';
 
-const DataDisplay = ({ rows, columns }) => {
+const DataDisplay = ({ tableData, selectedTables, tables }) => {
+  if (!tableData || Object.keys(tableData).length === 0) {
+    return null;
+  }
+
   return (
     <div className="mt-6">
-      <h2 className="text-lg font-semibold mb-2">Fetched Data</h2>
+      {/* Action buttons (Copy, Export JSON) */}
+      <ActionButtons tableData={tableData} selectedTables={selectedTables} />
 
-      {/* Action buttons (Copy, Export JSON, Export CSV) */}
-      <ActionButtons rows={rows} columns={columns} />
+      {/* Display data for each selected table */}
+      {selectedTables.map((tableId) => {
+        const data = tableData[tableId];
+        const tableName = tables.find((table) => table.id === tableId)?.name || tableId;
 
-      {/* JSON viewer */}
-      <div className="border rounded-lg p-4 bg-gray-50 text-left">
-        <JsonViewer data={{ columns, rows }} />
-      </div>
+        if (!data || !data.rows || !data.columns) return null;
+
+        return (
+          <div key={tableId} className="mb-6">
+            <h3 className="text-md font-semibold mb-2">{tableName}</h3>
+            <div className="border rounded-lg p-4 bg-gray-50 text-left">
+              <ReactJson
+                src={data}
+                name={null}
+                collapsed={true}
+                displayDataTypes={false}
+                enableClipboard={false}
+                displayObjectSize={false}
+                iconStyle="triangle"
+              />
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 };

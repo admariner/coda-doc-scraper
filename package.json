@@ -5,9 +5,11 @@
   "dependencies": {
     "@heroicons/react": "^2.2.0",
     "axios": "^1.7.9",
+    "lucide-react": "^0.469.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-json-pretty": "^2.2.0",
+    "react-json-view": "^1.21.3",
     "react-scripts": "5.0.1",
     "web-vitals": "^4.2.4"
   },
