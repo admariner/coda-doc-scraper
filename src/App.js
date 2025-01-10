@@ -1,5 +1,5 @@
 import React from 'react';
-import CodaDocScraper from './CodaDocScraper';
+import CodaDocScraper from './components/CodaScraper/CodaDocScraper';
 import './App.css';
 
 function App() {
