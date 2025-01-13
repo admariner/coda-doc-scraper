@@ -7,6 +7,9 @@ module.exports = function (app) {
       target: 'https://coda.io',
       changeOrigin: true,
       pathRewrite: { '^/api': '' }, // Remove /api prefix
+      headers: {
+        // Add any required headers here
+      },
     })
   );
 };

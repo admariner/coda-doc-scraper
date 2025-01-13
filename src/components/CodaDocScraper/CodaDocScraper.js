@@ -6,14 +6,32 @@ import Header from '../Header';
 import WelcomeCard from '../WelcomeCard';
 import ErrorDisplay from '../ErrorDisplay';
 import SkeletonLoader from './SkeletonLoader';
+import { CopyIcon, RefreshIcon } from '../DataDisplay/Icons';
+import AttributeSelector from './AttributeSelector';
 
 const CodaDocScraper = () => {
   const [apiToken, setApiToken] = useState(localStorage.getItem('codaApiToken') || '');
   const [docId, setDocId] = useState(localStorage.getItem('codaDocId') || '');
   const [tables, setTables] = useState([]);
   const [selectedTables, setSelectedTables] = useState(new Set());
+  const [tableData, setTableData] = useState({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  // State for selected column and row attributes
+  const [selectedColumnAttributes, setSelectedColumnAttributes] = useState([
+    'id',
+    'name',
+    'display',
+    'format',
+    'formula',
+    'defaultValue',
+  ]);
+  const [selectedRowAttributes, setSelectedRowAttributes] = useState([
+    'id',
+    'values',
+    'createdAt',
+  ]);
 
   // Save API token and docId to localStorage
   useEffect(() => {
@@ -67,19 +85,34 @@ const CodaDocScraper = () => {
       setError('No tables selected.');
       return;
     }
-
+  
     try {
       console.log('Copying data for all selected tables...');
-      const allTableData = tables
+  
+      // Create an object to hold all table data
+      const allTableData = {};
+  
+      // Iterate over selected tables
+      tables
         .filter((table) => selectedTables.has(table.id))
-        .map((table) => ({
-          [table.name]: {
-            columns: table.columns || [],
-            rows: table.rows || [],
-          },
-        }));
-
-      console.log('Concatenated data for all tables:', allTableData);
+        .forEach((table) => {
+          // Get the table's data from the tableData state
+          const tableDataForTable = tableData[table.id];
+  
+          if (tableDataForTable) {
+            // Apply the same filtering logic as the Preview window
+            const filteredColumns = filterData(tableDataForTable.columns, selectedColumnAttributes);
+            const filteredRows = filterData(tableDataForTable.rows, selectedRowAttributes);
+  
+            // Wrap the table's data in its own object
+            allTableData[table.name] = {
+              columns: filteredColumns,
+              rows: filteredRows,
+            };
+          }
+        });
+  
+      console.log('Copied data for all tables:', allTableData);
       navigator.clipboard.writeText(JSON.stringify(allTableData, null, 2));
       alert('All table data copied to clipboard!');
     } catch (err) {
@@ -94,9 +127,21 @@ const CodaDocScraper = () => {
     setDocId('');
     setTables([]);
     setSelectedTables(new Set());
+    setTableData({});
     setError('');
     localStorage.removeItem('codaApiToken');
     localStorage.removeItem('codaDocId');
+  };
+
+  // Filter data based on selected attributes and remove null/blank values
+  const filterData = (data, selectedAttributes) => {
+    return data.map((item) =>
+      Object.fromEntries(
+        Object.entries(item)
+          .filter(([key]) => selectedAttributes.includes(key))
+          .filter(([, value]) => value !== null && value !== '' && value !== undefined)
+      )
+    );
   };
 
   return (
@@ -140,45 +185,99 @@ const CodaDocScraper = () => {
               <button
                 onClick={handleLoadTables}
                 disabled={loading || !apiToken || !docId}
-                className="w-full px-4 py-1.5 bg-blue-500 text-white rounded-md hover:bg-blue-600 disabled:bg-blue-300 disabled:cursor-not-allowed flex items-center justify-center"
+                className="w-32 px-4 py-1.5 bg-blue-500 text-white rounded-md hover:bg-blue-600 disabled:bg-blue-300 disabled:cursor-not-allowed flex items-center justify-center"
               >
-                {loading ? (
-                  <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                    Loading Tables...
-                  </>
-                ) : (
-                  'Get Tables'
-                )}
+                {loading ? 'Loading...' : 'Get Tables'}
               </button>
               <button
                 onClick={handleReset}
-                className="px-4 py-1.5 bg-gray-500 text-white rounded-md hover:bg-gray-600"
+                className="px-3 py-1.5 bg-gray-500 text-white rounded-md hover:bg-gray-600 flex items-center justify-center"
               >
-                Reset
+                <RefreshIcon className="h-4 w-4" />
               </button>
             </div>
           </div>
         </div>
 
-        {/* Select Tables Dropdown */}
+        {/* Select Tables and Data */}
         {tables.length > 0 && (
-          <TableDropdown
-            tables={tables}
-            selectedTables={selectedTables}
-            setSelectedTables={setSelectedTables}
-          />
-        )}
+          <div className="bg-white p-6 border rounded-lg shadow-md">
+            <h2 className="text-lg font-bold mb-4">Select Tables and Data</h2>
+            <div className="space-y-4">
+              {/* Table Dropdown */}
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-1">
+                  Tables
+                </label>
+                <TableDropdown
+                  tables={tables}
+                  selectedTables={selectedTables}
+                  setSelectedTables={setSelectedTables}
+                />
+              </div>
 
-        {/* Copy All Tables Button */}
-        {selectedTables.size > 0 && (
-          <button
-            onClick={handleCopyAllTables}
-            disabled={loading}
-            className="px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 disabled:bg-green-300 disabled:cursor-not-allowed"
-          >
-            Copy All Tables
-          </button>
+              {/* Column Attributes Dropdown */}
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-1">
+                  Column Data
+                </label>
+                <AttributeSelector
+                  options={[
+                    'id',
+                    'name',
+                    'display',
+                    'format',
+                    'formula',
+                    'defaultValue',
+                    'href',
+                    'calculated',
+                  ]}
+                  selectedOptions={selectedColumnAttributes}
+                  onSelect={(option) => {
+                    if (selectedColumnAttributes.includes(option)) {
+                      setSelectedColumnAttributes(
+                        selectedColumnAttributes.filter((attr) => attr !== option)
+                      );
+                    } else {
+                      setSelectedColumnAttributes([...selectedColumnAttributes, option]);
+                    }
+                  }}
+                />
+              </div>
+
+              {/* Row Attributes Dropdown */}
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-1">
+                  Row Data
+                </label>
+                <AttributeSelector
+                  options={['id', 'values', 'createdAt', 'href', 'index', 'name']}
+                  selectedOptions={selectedRowAttributes}
+                  onSelect={(option) => {
+                    if (selectedRowAttributes.includes(option)) {
+                      setSelectedRowAttributes(
+                        selectedRowAttributes.filter((attr) => attr !== option)
+                      );
+                    } else {
+                      setSelectedRowAttributes([...selectedRowAttributes, option]);
+                    }
+                  }}
+                />
+              </div>
+
+              {/* Copy All Tables Button */}
+              <div className="flex justify-center">
+                <button
+                  onClick={handleCopyAllTables}
+                  disabled={selectedTables.size === 0}
+                  className="px-3 py-1.5 bg-green-500 text-white rounded-md hover:bg-green-600 disabled:bg-green-300 disabled:cursor-not-allowed flex items-center justify-center"
+                >
+                  <CopyIcon className="h-4 w-4 mr-2" />
+                  Copy All Tables
+                </button>
+              </div>
+            </div>
+          </div>
         )}
 
         {/* Table Cards */}
@@ -193,6 +292,8 @@ const CodaDocScraper = () => {
                 table={table}
                 apiToken={apiToken}
                 docId={docId}
+                selectedColumnAttributes={selectedColumnAttributes}
+                selectedRowAttributes={selectedRowAttributes}
                 onRemove={(tableId) => {
                   const newSelectedTables = new Set(selectedTables);
                   newSelectedTables.delete(tableId);
