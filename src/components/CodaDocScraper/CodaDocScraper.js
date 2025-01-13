@@ -42,6 +42,14 @@ const CodaDocScraper = () => {
     localStorage.setItem('codaDocId', docId);
   }, [docId]);
 
+  // Callback to update tableData when filtered data changes in a TableCard
+  const onTableDataChange = (tableId, filteredData) => {
+    setTableData((prev) => ({
+      ...prev,
+      [tableId]: filteredData,
+    }));
+  };
+
   // Fetch tables when "Load Table Data" is clicked
   const handleLoadTables = async () => {
     if (!apiToken || !docId) {
@@ -85,33 +93,26 @@ const CodaDocScraper = () => {
       setError('No tables selected.');
       return;
     }
-  
+
     try {
       console.log('Copying data for all selected tables...');
-  
+
       // Create an object to hold all table data
       const allTableData = {};
-  
+
       // Iterate over selected tables
       tables
         .filter((table) => selectedTables.has(table.id))
         .forEach((table) => {
           // Get the table's data from the tableData state
           const tableDataForTable = tableData[table.id];
-  
+
           if (tableDataForTable) {
-            // Apply the same filtering logic as the Preview window
-            const filteredColumns = filterData(tableDataForTable.columns, selectedColumnAttributes);
-            const filteredRows = filterData(tableDataForTable.rows, selectedRowAttributes);
-  
             // Wrap the table's data in its own object
-            allTableData[table.name] = {
-              columns: filteredColumns,
-              rows: filteredRows,
-            };
+            allTableData[table.name] = tableDataForTable;
           }
         });
-  
+
       console.log('Copied data for all tables:', allTableData);
       navigator.clipboard.writeText(JSON.stringify(allTableData, null, 2));
       alert('All table data copied to clipboard!');
@@ -299,6 +300,7 @@ const CodaDocScraper = () => {
                   newSelectedTables.delete(tableId);
                   setSelectedTables(newSelectedTables);
                 }}
+                onTableDataChange={onTableDataChange} // Pass the callback
               />
             ))
         )}
