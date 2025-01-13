@@ -88,27 +88,33 @@ const TableCard = ({
 
     // Filter data based on selected attributes
     const filterData = (data, selectedAttributes) => {
-        const filterObject = (obj) => {
-            return Object.fromEntries(
-                Object.entries(obj)
-                    .filter(([key, value]) => {
-                        // Include only selected attributes
-                        if (!selectedAttributes.includes(key)) return false;
-
-                        // Recursively filter nested objects
-                        if (typeof value === 'object' && value !== null) {
-                            value = filterObject(value);
-                        }
-
-                        // Exclude blank or null values
-                        return value !== "" && value !== null && value !== undefined;
-                    })
-                    .map(([key, value]) => [key, value])
-            );
-        };
-
-        return data.map((item) => filterObject(item));
-    };
+        return data.map((item) => {
+          // Log the row data before filtering
+          console.log('Row data before filtering:', item);
+      
+          // Filter the item based on selected attributes
+          const filteredItem = Object.fromEntries(
+            Object.entries(item)
+              .filter(([key]) => selectedAttributes.includes(key))
+              .map(([key, value]) => {
+                // If the key is "values" and it's an object, filter out empty string values
+                if (key === 'values' && typeof value === 'object' && value !== null) {
+                  const filteredValues = Object.fromEntries(
+                    Object.entries(value).filter(([, val]) => val !== "")
+                  );
+                  return [key, filteredValues];
+                }
+                return [key, value];
+              })
+              .filter(([, value]) => value !== null && value !== '' && value !== undefined)
+          );
+      
+          // Log the row data after filtering
+          console.log('Row data after filtering:', filteredItem);
+      
+          return filteredItem;
+        });
+      };
 
     // Row selector options
     const rowOptions = [
@@ -151,8 +157,8 @@ const TableCard = ({
                             key={option.value}
                             onClick={() => setRowCount(option.value)}
                             className={`px-3 py-1 rounded-md text-sm font-medium ${rowCount === option.value
-                                    ? `bg-gray-700 text-white`
-                                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                ? `bg-gray-700 text-white`
+                                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
                                 }`}
                         >
                             {option.label}
