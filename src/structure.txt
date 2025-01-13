@@ -17,9 +17,11 @@
 | |____InputField.js
 | |____WelcomeCard.js
 | |____CodaDocScraper
+| | |____TableCard.js
 | | |____CodaDocScraper.js
 | | |____SkeletonLoader.js
 | | |____ApiTokenForm.js
+| | |____TableDropdown.js
 | | |____SettingsPanel.js
 | | |____GlobalActions.js
 | | |____PreviewModal.js

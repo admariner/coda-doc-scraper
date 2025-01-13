@@ -14,13 +14,11 @@ const useFetchTables = () => {
 
     setLoading(true);
     setError('');
-
     try {
       const tablesResponse = await axios.get(`https://coda.io/apis/v1/docs/${docId}/tables`, {
         headers: { Authorization: `Bearer ${apiToken}` },
       });
 
-      // Fetch rowCount for each table
       const tablesWithRowCount = await Promise.all(
         tablesResponse.data.items.map(async (table) => {
           const tableDetails = await axios.get(`https://coda.io/apis/v1/docs/${docId}/tables/${table.id}`, {
