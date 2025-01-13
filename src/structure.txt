@@ -1,0 +1,37 @@
+.
+|____reportWebVitals.js
+|____setupProxy.js
+|____App.css
+|____index.js
+|____index.css
+|____components
+| |____InputForm.js
+| |____LoadingSpinner.js
+| |____Header.js
+| |____ExportButtons.js
+| |____DataDisplay
+| | |____Icons.js
+| | |____DataDisplay.js
+| | |____JsonViewer.js
+| | |____ActionButtons.js
+| |____InputField.js
+| |____WelcomeCard.js
+| |____CodaDocScraper
+| | |____CodaDocScraper.js
+| | |____SkeletonLoader.js
+| | |____ApiTokenForm.js
+| | |____SettingsPanel.js
+| | |____GlobalActions.js
+| | |____PreviewModal.js
+| | |____ContentSelect.js
+| |____ErrorDisplay.js
+|____hooks
+| |____useCodaApi.js
+| |____useFetchTables.js
+| |____useFetchTableData.js
+| |____useTableState.js
+|____App.test.js
+|____structure.txt
+|____setupTests.js
+|____logo.svg
+|____App.js
