@@ -45,7 +45,7 @@ const ContentSelect = ({ tables = [], selectedTables, rowSettings, onSelectTable
                     checked={rowSettings[table.id]?.rowsToFetch === '0'}
                     onChange={() => onRowSettingsChange(table.id, '0')}
                   />
-                  <span className="ml-2">0 rows (metadata only)</span>
+                  <span className="ml-2">0 rows (Columns only)</span>
                 </label>
                 <label className="flex items-center">
                   <input

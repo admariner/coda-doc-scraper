@@ -62,52 +62,41 @@ const CodaDocScraper = () => {
   };
 
   // Handle copying all selected tables
-  const handleCopyAllTables = async () => {
+  const handleCopyAllTables = () => {
     if (selectedTables.size === 0) {
       setError('No tables selected.');
       return;
     }
 
-    setLoading(true);
-    setError('');
     try {
-      console.log('Fetching data for all selected tables...');
-      const allTableData = await Promise.all(
-        Array.from(selectedTables).map(async (tableId) => {
-          const table = tables.find((t) => t.id === tableId);
-          if (!table) return null;
+      console.log('Copying data for all selected tables...');
+      const allTableData = tables
+        .filter((table) => selectedTables.has(table.id))
+        .map((table) => ({
+          [table.name]: {
+            columns: table.columns || [],
+            rows: table.rows || [],
+          },
+        }));
 
-          // Fetch all rows if "All Rows" is selected
-          let rows = [];
-          if (table.rowCount > 0) {
-            let pageToken = '';
-            do {
-              const response = await axios.get(
-                `https://coda.io/apis/v1/docs/${docId}/tables/${table.id}/rows`,
-                {
-                  headers: { Authorization: `Bearer ${apiToken}` },
-                  params: { limit: 100, pageToken, valueFormat: 'simpleWithArrays' },
-                }
-              );
-              rows = [...rows, ...response.data.items];
-              pageToken = response.data.nextPageToken;
-            } while (pageToken);
-          }
-
-          return { [table.name]: { columns: table.columns || [], rows } };
-        })
-      );
-
-      const concatenatedData = allTableData.filter(Boolean);
-      console.log('Concatenated data for all tables:', concatenatedData);
-      navigator.clipboard.writeText(JSON.stringify(concatenatedData, null, 2));
+      console.log('Concatenated data for all tables:', allTableData);
+      navigator.clipboard.writeText(JSON.stringify(allTableData, null, 2));
       alert('All table data copied to clipboard!');
     } catch (err) {
       console.error('Error copying all tables:', err);
       setError('Failed to copy all tables. Please try again.');
-    } finally {
-      setLoading(false);
     }
+  };
+
+  // Reset the entire state
+  const handleReset = () => {
+    setApiToken('');
+    setDocId('');
+    setTables([]);
+    setSelectedTables(new Set());
+    setError('');
+    localStorage.removeItem('codaApiToken');
+    localStorage.removeItem('codaDocId');
   };
 
   return (
@@ -163,12 +152,7 @@ const CodaDocScraper = () => {
                 )}
               </button>
               <button
-                onClick={() => {
-                  setApiToken('');
-                  setDocId('');
-                  localStorage.removeItem('codaApiToken');
-                  localStorage.removeItem('codaDocId');
-                }}
+                onClick={handleReset}
                 className="px-4 py-1.5 bg-gray-500 text-white rounded-md hover:bg-gray-600"
               >
                 Reset

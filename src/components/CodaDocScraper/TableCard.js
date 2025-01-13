@@ -47,11 +47,16 @@ const TableCard = ({ table, apiToken, docId, onRemove }) => {
   // Fetch row data when rowCount changes
   useEffect(() => {
     const fetchRows = async () => {
-      if (rowCount === '0') return; // Skip fetching rows for "Metadata Only"
-
       setIsLoading(true);
       setError('');
       try {
+        if (rowCount === '0') {
+          // For "Columns Only", set rows to an empty array
+          console.log(`Setting rows to empty for table ${table.id} (Columns Only)`);
+          setTableData((prev) => ({ ...prev, rows: [] }));
+          return;
+        }
+
         console.log(`Fetching rows for table ${table.id} with rowCount: ${rowCount}...`);
         const limit = rowCount === 'All' ? undefined : parseInt(rowCount, 10);
         const response = await axios.get(
@@ -90,7 +95,7 @@ const TableCard = ({ table, apiToken, docId, onRemove }) => {
 
   // Row selector options
   const rowOptions = [
-    { label: 'Metadata Only', value: '0', color: 'gray' },
+    { label: 'Columns Only', value: '0', color: 'gray' },
     { label: '1 Row', value: '1', color: 'green' },
     { label: 'All Rows', value: 'All', color: 'blue' },
   ];
@@ -156,7 +161,6 @@ const TableCard = ({ table, apiToken, docId, onRemove }) => {
 
         {isExpanded && (
           <div className="mt-4">
-            <h4 className="text-sm font-semibold mb-2">Preview</h4>
             {isLoading ? (
               <div className="animate-pulse space-y-2">
                 <div className="bg-gray-200 h-4 rounded"></div>
