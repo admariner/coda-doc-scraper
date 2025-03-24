@@ -8,8 +8,10 @@ import SkeletonLoader from './SkeletonLoader';
 import { CopyIcon, RefreshIcon, LoadingSpinner } from '../DataDisplay/Icons';
 import AttributeSelector from './AttributeSelector';
 import JsonPreviewPanel from '../DataDisplay/JsonPreviewPanel';
-import TableSelector from './TableSelector';
+import TableListView from './TableListView';
 import ColumnFilter from './ColumnFilter';
+import FormatToggle from './FormatToggle';
+import SavedDocsDropdown from './SavedDocsDropdown';
 
 const CodaDocScraper = () => {
   const [apiToken, setApiToken] = useState(localStorage.getItem('codaApiToken') || '');
@@ -31,6 +33,11 @@ const CodaDocScraper = () => {
   const [previewJsonData, setPreviewJsonData] = useState({});
   const [tableIsCopying, setTableIsCopying] = useState({});
   const [showColumnFilter, setShowColumnFilter] = useState(null);
+  const [formatMode, setFormatMode] = useState('column-centric');
+  const [docName, setDocName] = useState('');
+  const [savedDocs, setSavedDocs] = useState(
+    JSON.parse(localStorage.getItem('codaSavedDocs') || '[]')
+  );
 
   // State for selected column and row attributes
   const [selectedColumnAttributes, setSelectedColumnAttributes] = useState([
@@ -102,6 +109,16 @@ const CodaDocScraper = () => {
     setLoading(true);
     setError('');
     try {
+      // First fetch the doc details to get the name
+      console.log('Fetching document info...');
+      const docResponse = await axios.get(
+        `https://coda.io/apis/v1/docs/${docId}`,
+        { headers: { Authorization: `Bearer ${apiToken}` } }
+      );
+      
+      // Set the document name
+      setDocName(docResponse.data.name);
+      
       console.log('Fetching tables...');
       const tablesResponse = await axios.get(
         `https://coda.io/apis/v1/docs/${docId}/tables`,
@@ -236,9 +253,63 @@ const CodaDocScraper = () => {
     setPreviewJsonData({});
     setTableIsCopying({});
     setShowColumnFilter(null);
+    setDocName('');
     localStorage.removeItem('codaApiToken');
     localStorage.removeItem('codaDocId');
     showToast('Reset successful', 'success');
+  };
+  
+  // Save document to localStorage
+  const saveDocument = () => {
+    if (!apiToken || !docId || !docName) {
+      setError('API Token, Document ID, and Document Name are required to save');
+      return;
+    }
+    
+    const newDoc = {
+      apiToken,
+      docId,
+      docName,
+      savedAt: new Date().toISOString()
+    };
+    
+    // Check if doc already exists
+    const updatedDocs = savedDocs.filter(doc => doc.docId !== docId);
+    updatedDocs.push(newDoc);
+    
+    setSavedDocs(updatedDocs);
+    localStorage.setItem('codaSavedDocs', JSON.stringify(updatedDocs));
+    showToast(`Document "${docName}" saved`, 'success');
+  };
+  
+  // Remove saved document
+  const removeSavedDoc = (docIdToRemove) => {
+    const updatedDocs = savedDocs.filter(doc => doc.docId !== docIdToRemove);
+    setSavedDocs(updatedDocs);
+    localStorage.setItem('codaSavedDocs', JSON.stringify(updatedDocs));
+    showToast('Document removed from saved list', 'success');
+  };
+  
+  // Load saved document
+  const loadSavedDoc = (doc) => {
+    setApiToken(doc.apiToken);
+    setDocId(doc.docId);
+    setDocName(doc.docName);
+    
+    // Store in localStorage
+    localStorage.setItem('codaApiToken', doc.apiToken);
+    localStorage.setItem('codaDocId', doc.docId);
+    
+    // Reset other state
+    setTables([]);
+    setSelectedTables(new Set());
+    setTableData({});
+    setSelectedRowCounts({});
+    setColumnsData({});
+    setSelectedColumns({});
+    setPreviewJsonData({});
+    
+    showToast(`Loaded document: ${doc.docName}`, 'success');
   };
   
   // Show toast message
@@ -402,38 +473,69 @@ const CodaDocScraper = () => {
     // Only include selected columns
     const filteredColumns = columns.filter(col => selectedColIds.includes(col.id));
     
-    // Create structured data (column-centric)
-    const structuredData = {};
-    
-    // Add column definitions
-    filteredColumns.forEach(column => {
-      structuredData[column.name] = {
-        ...column,
+    if (formatMode === 'column-centric') {
+      // Create structured data (column-centric)
+      const structuredData = {};
+      
+      // Add column definitions
+      filteredColumns.forEach(column => {
+        structuredData[column.name] = {
+          ...column,
+          rows: []
+        };
+      });
+      
+      // Add row data under each column
+      rows.forEach(row => {
+        if (row.values) {
+          Object.entries(row.values).forEach(([columnId, value]) => {
+            const columnName = columnIdToNameMap[columnId];
+            if (structuredData[columnName]) {
+              // Include relevant row metadata with each value
+              const rowMetadata = {};
+              if (row.name) rowMetadata.name = row.name;
+              if (row.createdAt) rowMetadata.createdAt = row.createdAt;
+              
+              structuredData[columnName].rows.push({
+                ...rowMetadata,
+                value
+              });
+            }
+          });
+        }
+      });
+      
+      return structuredData;
+    } else {
+      // Row-centric format
+      const structuredData = {
+        columns: filteredColumns,
         rows: []
       };
-    });
-    
-    // Add row data under each column
-    rows.forEach(row => {
-      if (row.values) {
-        Object.entries(row.values).forEach(([columnId, value]) => {
-          const columnName = columnIdToNameMap[columnId];
-          if (structuredData[columnName]) {
-            // Include relevant row metadata with each value
-            const rowMetadata = {};
-            if (row.name) rowMetadata.name = row.name;
-            if (row.createdAt) rowMetadata.createdAt = row.createdAt;
-            
-            structuredData[columnName].rows.push({
-              ...rowMetadata,
-              value
-            });
+      
+      // Process rows
+      rows.forEach(row => {
+        if (!row.values) return;
+        
+        const rowData = {
+          id: row.id,
+          name: row.name,
+          createdAt: row.createdAt,
+          values: {}
+        };
+        
+        // Add values only for the selected columns
+        filteredColumns.forEach(col => {
+          if (row.values[col.id] !== undefined) {
+            rowData.values[col.name] = row.values[col.id];
           }
         });
-      }
-    });
-    
-    return structuredData;
+        
+        structuredData.rows.push(rowData);
+      });
+      
+      return structuredData;
+    }
   };
   
   // Toggle showing the column filter for a specific table
@@ -481,156 +583,172 @@ const CodaDocScraper = () => {
   ];
 
   return (
-    <div className="flex flex-col xl:flex-row xl:space-x-6 max-w-7xl mx-auto">
-      {/* Left side - Input and tables */}
-      <div className="w-full xl:w-1/2 space-y-6">
-        {/* Header */}
-        <Header />
+    <div className="flex flex-col min-h-screen">
+      {/* Header */}
+      <Header docName={docName} />
 
-        {/* Welcome Card */}
-        <WelcomeCard />
+      <div className="flex flex-col xl:flex-row xl:space-x-6 max-w-7xl mx-auto w-full px-4 py-6">
+        {/* Left side - Input and tables */}
+        <div className="w-full xl:w-3/5 space-y-6">
+          {/* Welcome Card */}
+          <WelcomeCard />
 
-        {/* API Token and Document ID Form */}
-        <div className="bg-white p-6 border rounded-lg shadow-md">
-          <h2 className="text-lg font-bold mb-4">API Token and Document ID</h2>
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                API Token
-                <input
-                  type="password"
-                  value={apiToken}
-                  onChange={(e) => {
-                    setApiToken(e.target.value);
-                    setApiTokenError('');
-                  }}
-                  className={`w-full p-2 border rounded-md mt-1 ${apiTokenError ? 'border-red-500' : ''}`}
-                  placeholder="Enter your Coda API token"
-                />
-              </label>
-              {apiTokenError && (
-                <p className="text-red-500 text-xs mt-1">{apiTokenError}</p>
-              )}
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Document ID
-                <input
-                  type="text"
-                  value={docId}
-                  onChange={(e) => {
-                    setDocId(e.target.value);
-                    setDocIdError('');
-                  }}
-                  className={`w-full p-2 border rounded-md mt-1 ${docIdError ? 'border-red-500' : ''}`}
-                  placeholder="Enter your Coda Document ID"
-                />
-              </label>
-              {docIdError && (
-                <p className="text-red-500 text-xs mt-1">{docIdError}</p>
-              )}
-            </div>
-            <div className="flex space-x-4">
-              <button
-                onClick={handleLoadTables}
-                disabled={loading || !apiToken || !docId}
-                className="w-32 px-4 py-1.5 bg-blue-500 text-white rounded-md hover:bg-blue-600 disabled:bg-blue-300 disabled:cursor-not-allowed flex items-center justify-center"
-              >
-                {loading ? 'Loading...' : 'Get Tables'}
-              </button>
-              <button
-                onClick={handleReset}
-                className="px-3 py-1.5 bg-gray-500 text-white rounded-md hover:bg-gray-600 flex items-center justify-center"
-              >
-                <RefreshIcon className="h-4 w-4" />
-              </button>
+          {/* API Token and Document ID Form */}
+          <div className="bg-white p-6 border rounded-lg shadow-md">
+            <h2 className="text-lg font-bold mb-4">API Token and Document ID</h2>
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    API Token
+                    <input
+                      type="password"
+                      value={apiToken}
+                      onChange={(e) => {
+                        setApiToken(e.target.value);
+                        setApiTokenError('');
+                      }}
+                      className={`w-full p-2 border rounded-md mt-1 ${apiTokenError ? 'border-red-500' : ''}`}
+                      placeholder="Enter your Coda API token"
+                    />
+                  </label>
+                  {apiTokenError && (
+                    <p className="text-red-500 text-xs mt-1">{apiTokenError}</p>
+                  )}
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Document ID
+                    <input
+                      type="text"
+                      value={docId}
+                      onChange={(e) => {
+                        setDocId(e.target.value);
+                        setDocIdError('');
+                      }}
+                      className={`w-full p-2 border rounded-md mt-1 ${docIdError ? 'border-red-500' : ''}`}
+                      placeholder="Enter your Coda Document ID"
+                    />
+                  </label>
+                  {docIdError && (
+                    <p className="text-red-500 text-xs mt-1">{docIdError}</p>
+                  )}
+                </div>
+              </div>
+              
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex space-x-2">
+                  <button
+                    onClick={handleLoadTables}
+                    disabled={loading || !apiToken || !docId}
+                    className="px-4 py-1.5 bg-blue-500 text-white rounded-md hover:bg-blue-600 disabled:bg-blue-300 disabled:cursor-not-allowed flex items-center justify-center"
+                  >
+                    {loading ? 'Loading...' : 'Get Tables'}
+                  </button>
+                  <button
+                    onClick={handleReset}
+                    className="px-3 py-1.5 bg-gray-500 text-white rounded-md hover:bg-gray-600 flex items-center justify-center"
+                    title="Reset Form"
+                  >
+                    <RefreshIcon className="h-4 w-4" />
+                  </button>
+                </div>
+                
+                <div className="flex space-x-2 items-center">
+                  <div className="w-48">
+                    <SavedDocsDropdown 
+                      savedDocs={savedDocs}
+                      onSelect={loadSavedDoc}
+                      onRemove={removeSavedDoc}
+                    />
+                  </div>
+                  <button
+                    onClick={saveDocument}
+                    disabled={!apiToken || !docId || !docName}
+                    className="px-3 py-1.5 bg-blue-500 text-white rounded-md hover:bg-blue-600 disabled:bg-blue-300 disabled:cursor-not-allowed"
+                  >
+                    Save Doc
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
+
+          {/* Format Toggle */}
+          {tables.length > 0 && (
+            <div className="bg-white p-4 border rounded-lg shadow-md flex justify-between items-center">
+              <div className="flex items-center space-x-4">
+                <FormatToggle 
+                  formatMode={formatMode}
+                  onToggle={setFormatMode}
+                />
+                
+                <button
+                  onClick={handleCopyAllTables}
+                  disabled={selectedTables.size === 0 || copyLoading}
+                  className="px-3 py-1.5 bg-green-500 text-white rounded-md hover:bg-green-600 disabled:bg-green-300 disabled:cursor-not-allowed flex items-center justify-center"
+                >
+                  {copyLoading ? (
+                    <>
+                      <LoadingSpinner className="h-4 w-4 mr-2" />
+                      Copying...
+                    </>
+                  ) : (
+                    <>
+                      <CopyIcon className="h-4 w-4 mr-2" />
+                      Copy All Selected
+                    </>
+                  )}
+                </button>
+              </div>
+              
+              {selectedTables.size > 0 && (
+                <span className="text-sm text-gray-500">
+                  {selectedTables.size} table{selectedTables.size !== 1 ? 's' : ''} selected
+                </span>
+              )}
+            </div>
+          )}
+
+          {/* Table List View */}
+          {tables.length > 0 && (
+            <TableListView
+              tables={tables}
+              selectedTables={selectedTables}
+              setSelectedTables={setSelectedTables}
+              onCopyTable={handleCopyTableData}
+              onSelectRowsOption={handleSelectRowsOption}
+              rowOptions={rowOptions}
+              selectedRowCounts={selectedRowCounts}
+              isCopying={tableIsCopying}
+            />
+          )}
+
+          {/* Column Filter for Selected Table */}
+          {showColumnFilter && columnsData[showColumnFilter] && (
+            <ColumnFilter 
+              tableId={showColumnFilter}
+              tableName={tables.find(t => t.id === showColumnFilter)?.name || 'Table'}
+              columns={columnsData[showColumnFilter]}
+              selectedColumns={selectedColumns[showColumnFilter] || []}
+              onColumnToggle={handleColumnToggle}
+            />
+          )}
+
+          {/* Loading Skeleton */}
+          {loading && <SkeletonLoader />}
+
+          {/* Error Display */}
+          {error && <ErrorDisplay error={error} />}
         </div>
 
-        {/* Table Selector */}
-        {tables.length > 0 && (
-          <TableSelector
-            tables={tables}
-            selectedTables={selectedTables}
-            setSelectedTables={setSelectedTables}
-            onCopyTable={handleCopyTableData}
-            onSelectRowsOption={handleSelectRowsOption}
-            rowOptions={rowOptions}
-            selectedRowCounts={selectedRowCounts}
-            isCopying={tableIsCopying}
+        {/* Right side - JSON Preview */}
+        <div className="w-full xl:w-2/5 mt-6 xl:mt-0 sticky top-6 self-start">
+          <JsonPreviewPanel 
+            jsonData={previewJsonData} 
+            title={`JSON Preview (${formatMode === 'column-centric' ? 'Column-Centric' : 'Row-Centric'})`}
           />
-        )}
-
-        {/* Column Filter for Selected Table */}
-        {showColumnFilter && columnsData[showColumnFilter] && (
-          <ColumnFilter 
-            tableId={showColumnFilter}
-            tableName={tables.find(t => t.id === showColumnFilter)?.name || 'Table'}
-            columns={columnsData[showColumnFilter]}
-            selectedColumns={selectedColumns[showColumnFilter] || []}
-            onColumnToggle={handleColumnToggle}
-          />
-        )}
-
-        {/* Selected Tables Buttons */}
-        {selectedTables.size > 0 && (
-          <div className="bg-white p-4 border rounded-lg shadow-md">
-            <div className="flex flex-wrap gap-2 justify-between items-center">
-              <h3 className="text-md font-semibold">Selected Tables:</h3>
-              <button
-                onClick={handleCopyAllTables}
-                disabled={copyLoading}
-                className="px-3 py-1.5 bg-green-500 text-white rounded-md hover:bg-green-600 disabled:bg-green-300 disabled:cursor-not-allowed flex items-center justify-center text-sm"
-              >
-                {copyLoading ? (
-                  <>
-                    <LoadingSpinner className="h-4 w-4 mr-2" />
-                    Copying All...
-                  </>
-                ) : (
-                  <>
-                    <CopyIcon className="h-4 w-4 mr-2" />
-                    Copy All Tables
-                  </>
-                )}
-              </button>
-            </div>
-
-            <div className="mt-3 flex flex-wrap gap-2">
-              {Array.from(selectedTables).map(tableId => {
-                const table = tables.find(t => t.id === tableId);
-                return (
-                  <button
-                    key={tableId}
-                    onClick={() => toggleColumnFilter(tableId)}
-                    className={`px-2 py-1 rounded-md text-xs font-medium ${
-                      showColumnFilter === tableId 
-                        ? 'bg-blue-100 border border-blue-400' 
-                        : 'bg-gray-100 border border-gray-300 hover:bg-gray-200'
-                    }`}
-                  >
-                    {table?.name} ({selectedColumns[tableId]?.length || 0} columns)
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {/* Loading Skeleton */}
-        {loading && <SkeletonLoader />}
-
-        {/* Error Display */}
-        {error && <ErrorDisplay error={error} />}
-      </div>
-
-      {/* Right side - JSON Preview */}
-      <div className="w-full xl:w-1/2 mt-6 xl:mt-0 sticky top-6 self-start">
-        <JsonPreviewPanel 
-          jsonData={previewJsonData} 
-          title="Combined JSON Preview" 
-        />
+        </div>
       </div>
 
       {/* Toast Notification */}
