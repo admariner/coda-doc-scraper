@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import JSZip from 'jszip';
+import { saveAs } from 'file-saver';
 import TableCard from './TableCard';
 import Header from '../Header';
 import WelcomeCard from '../WelcomeCard';
 import ErrorDisplay, { Toast } from '../ErrorDisplay';
 import SkeletonLoader from './SkeletonLoader';
-import { CopyIcon, RefreshIcon, LoadingSpinner } from '../DataDisplay/Icons';
+import { CopyIcon, RefreshIcon, LoadingSpinner, DownloadIcon, ZipIcon } from '../DataDisplay/Icons';
 import AttributeSelector from './AttributeSelector';
 import JsonPreviewPanel from '../DataDisplay/JsonPreviewPanel';
 import TableListView from './TableListView';
@@ -26,6 +28,7 @@ const CodaDocScraper = () => {
   const [error, setError] = useState('');
   const [toast, setToast] = useState(null);
   const [copyLoading, setCopyLoading] = useState(false);
+  const [downloadLoading, setDownloadLoading] = useState(false);
   const [apiTokenError, setApiTokenError] = useState('');
   const [docIdError, setDocIdError] = useState('');
   
@@ -205,6 +208,30 @@ const CodaDocScraper = () => {
     }
   };
 
+  // Process all selected tables and return structured data
+  const processAllSelectedTables = () => {
+    // Create an object to hold all table data
+    const allTableData = {};
+
+    // Iterate over selected tables
+    tables
+      .filter((table) => selectedTables.has(table.id))
+      .forEach((table) => {
+        // Get the raw data for this table
+        const rawTableData = tableData[table.id];
+        
+        if (rawTableData) {
+          // Process the data for a more intuitive structure
+          const processedTable = processTableData(table.id);
+          
+          // Add this table's structured data to the overall object
+          allTableData[table.name] = processedTable;
+        }
+      });
+    
+    return allTableData;
+  };
+
   // Handle copying all selected tables
   const handleCopyAllTables = async () => {
     if (selectedTables.size === 0) {
@@ -216,55 +243,8 @@ const CodaDocScraper = () => {
     try {
       console.log('Copying data for all selected tables...');
 
-      // Create an object to hold all table data
-      const allTableData = {};
-
-      // Iterate over selected tables
-      tables
-        .filter((table) => selectedTables.has(table.id))
-        .forEach((table) => {
-          // Get the raw data for this table
-          const rawTableData = tableData[table.id];
-          
-          if (rawTableData) {
-            // Process the data for a more intuitive structure
-            // This mimics what TableCard.getProcessedData() does
-            const columns = rawTableData.columns || [];
-            const rows = rawTableData.rows || [];
-            
-            const structuredData = {};
-            
-            // Add column definitions
-            columns.forEach(column => {
-              structuredData[column.name] = {
-                ...column,
-                rows: []
-              };
-            });
-            
-            // Add row data under each column
-            rows.forEach(row => {
-              if (row.values) {
-                Object.entries(row.values).forEach(([columnName, value]) => {
-                  if (structuredData[columnName]) {
-                    // Include relevant row metadata with each value
-                    const rowMetadata = {};
-                    if (row.name) rowMetadata.name = row.name;
-                    if (row.createdAt) rowMetadata.createdAt = row.createdAt;
-                    
-                    structuredData[columnName].rows.push({
-                      ...rowMetadata,
-                      value
-                    });
-                  }
-                });
-              }
-            });
-            
-            // Add this table's structured data to the overall object
-            allTableData[table.name] = structuredData;
-          }
-        });
+      // Get processed data for all selected tables
+      const allTableData = processAllSelectedTables();
 
       console.log('Copied data for all tables:', allTableData);
       await navigator.clipboard.writeText(JSON.stringify(allTableData, null, 2));
@@ -496,6 +476,141 @@ const CodaDocScraper = () => {
         ...prev,
         [tableId]: false
       }));
+    }
+  };
+  
+  // Download a single table as JSON file
+  const handleDownloadTableData = async (tableId) => {
+    const table = tables.find(t => t.id === tableId);
+    if (!table) return;
+    
+    // Update copying state
+    setTableIsCopying(prev => ({
+      ...prev,
+      [tableId]: true
+    }));
+    
+    try {
+      // If we don't have the data yet, fetch it
+      if (!tableData[tableId]) {
+        await fetchAndProcessTableData(tableId, selectedRowCounts[tableId] || '1');
+      }
+      
+      // Get the processed data
+      const processedData = processTableData(tableId);
+      
+      // Create a Blob with the JSON data
+      const jsonStr = JSON.stringify(processedData, null, 2);
+      const blob = new Blob([jsonStr], { type: 'application/json' });
+      
+      // Create a downloadable URL and trigger the download
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${table.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.json`;
+      link.click();
+      
+      // Clean up the URL
+      URL.revokeObjectURL(url);
+      
+      showToast(`Table "${table.name}" downloaded as JSON file!`, 'success');
+    } catch (err) {
+      console.error(`Error downloading table ${tableId}:`, err);
+      setError(`Failed to download table data. ${err.message}`);
+      showToast('Failed to download table data', 'error');
+    } finally {
+      // Update copying state
+      setTableIsCopying(prev => ({
+        ...prev,
+        [tableId]: false
+      }));
+    }
+  };
+  
+  // Download all selected tables as a ZIP file
+  const handleDownloadAllTablesAsZip = async () => {
+    if (selectedTables.size === 0) {
+      setError('No tables selected.');
+      return;
+    }
+
+    setDownloadLoading(true);
+    try {
+      // Create a new ZIP file
+      const zip = new JSZip();
+      
+      // Get filtered tables
+      const selectedTablesList = tables.filter(table => selectedTables.has(table.id));
+      
+      // Add each table as a separate file in the ZIP
+      for (const table of selectedTablesList) {
+        // If we don't have the data yet, fetch it
+        if (!tableData[table.id]) {
+          await fetchAndProcessTableData(table.id, selectedRowCounts[table.id] || '1');
+        }
+        
+        // Get processed data for this table
+        const processedData = processTableData(table.id);
+        
+        // Only add if we have data
+        if (Object.keys(processedData).length > 0) {
+          // Create a clean filename
+          const filename = `${table.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.json`;
+          
+          // Add the file to the ZIP
+          zip.file(filename, JSON.stringify(processedData, null, 2));
+        }
+      }
+      
+      // Generate the ZIP file
+      const content = await zip.generateAsync({ type: 'blob' });
+      
+      // Trigger download
+      saveAs(content, `${docName.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_tables.zip`);
+      
+      showToast('All tables downloaded as ZIP file!', 'success');
+    } catch (err) {
+      console.error('Error downloading tables as ZIP:', err);
+      setError('Failed to create ZIP file. Please try again.');
+      showToast('Failed to download tables', 'error');
+    } finally {
+      setDownloadLoading(false);
+    }
+  };
+  
+  // Download all tables as a single JSON file
+  const handleDownloadAllTablesAsJson = async () => {
+    if (selectedTables.size === 0) {
+      setError('No tables selected.');
+      return;
+    }
+
+    setDownloadLoading(true);
+    try {
+      // Get processed data for all selected tables
+      const allTableData = processAllSelectedTables();
+      
+      // Create a Blob with the JSON data
+      const jsonStr = JSON.stringify(allTableData, null, 2);
+      const blob = new Blob([jsonStr], { type: 'application/json' });
+      
+      // Create a downloadable URL and trigger the download
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${docName.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_all_tables.json`;
+      link.click();
+      
+      // Clean up the URL
+      URL.revokeObjectURL(url);
+      
+      showToast('All tables downloaded as a single JSON file!', 'success');
+    } catch (err) {
+      console.error('Error downloading all tables as JSON:', err);
+      setError('Failed to download tables. Please try again.');
+      showToast('Failed to download tables', 'error');
+    } finally {
+      setDownloadLoading(false);
     }
   };
   
@@ -762,7 +877,7 @@ const CodaDocScraper = () => {
       {/* Header */}
       <Header docName={docName} />
 
-      <div className="flex flex-col xl:flex-row xl:space-x-6 max-w-7xl mx-auto w-full px-4 py-6">
+      <div className="flex flex-col xl:flex-row xl:space-x-6 max-w-7xl mx-auto w-full px-2 sm:px-4 py-6">
         {/* Left side - Input and tables */}
         <div className="w-full xl:w-3/5 space-y-6">
           {/* Welcome Card */}
@@ -895,29 +1010,73 @@ const CodaDocScraper = () => {
                   </button>
                 </div>
                 
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={handleCopyAllTables}
-                    disabled={selectedTables.size === 0 || copyLoading}
-                    className="px-3 py-1.5 bg-green-500 text-white rounded-md hover:bg-green-600 disabled:bg-green-300 disabled:cursor-not-allowed flex items-center justify-center"
-                  >
-                    {copyLoading ? (
-                      <>
-                        <LoadingSpinner className="h-4 w-4 mr-2" />
-                        Copying...
-                      </>
-                    ) : (
-                      <>
-                        <CopyIcon className="h-4 w-4 mr-2" />
-                        Copy All Selected
-                      </>
-                    )}
-                  </button>
+                <div className="flex items-center gap-2">
+                  <div className="relative group">
+                    <button
+                      onClick={handleCopyAllTables}
+                      disabled={selectedTables.size === 0 || copyLoading}
+                      className="px-3 py-1.5 bg-green-500 text-white rounded-md hover:bg-green-600 disabled:bg-green-300 disabled:cursor-not-allowed flex items-center justify-center"
+                    >
+                      {copyLoading ? (
+                        <>
+                          <LoadingSpinner className="h-4 w-4 mr-2" />
+                          Copying...
+                        </>
+                      ) : (
+                        <>
+                          <CopyIcon className="h-4 w-4 mr-2" />
+                          Copy
+                        </>
+                      )}
+                    </button>
+                  </div>
+                  
+                  <div className="relative group">
+                    <button
+                      disabled={selectedTables.size === 0 || downloadLoading}
+                      className="px-3 py-1.5 bg-blue-500 text-white rounded-md hover:bg-blue-600 disabled:bg-blue-300 disabled:cursor-not-allowed flex items-center justify-center"
+                      onClick={() => {
+                        const menu = document.getElementById('download-menu');
+                        menu.classList.toggle('hidden');
+                      }}
+                    >
+                      <DownloadIcon className="h-4 w-4 mr-2" />
+                      Download
+                    </button>
+                    
+                    <div id="download-menu" className="absolute hidden right-0 mt-1 w-48 bg-white rounded-md shadow-lg z-50 border border-gray-200">
+                      <div className="py-1">
+                        <button
+                          onClick={handleDownloadAllTablesAsJson}
+                          disabled={downloadLoading}
+                          className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center"
+                        >
+                          <DownloadIcon className="h-4 w-4 mr-2 text-blue-500" />
+                          Single JSON File
+                        </button>
+                        <button
+                          onClick={handleDownloadAllTablesAsZip}
+                          disabled={downloadLoading}
+                          className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center"
+                        >
+                          <ZipIcon className="h-4 w-4 mr-2 text-blue-500" />
+                          ZIP Archive
+                        </button>
+                      </div>
+                    </div>
+                  </div>
                   
                   {selectedTables.size > 0 && (
                     <span className="text-sm text-gray-500">
                       {selectedTables.size} table{selectedTables.size !== 1 ? 's' : ''} selected
                     </span>
+                  )}
+                  
+                  {downloadLoading && (
+                    <div className="flex items-center text-blue-500">
+                      <LoadingSpinner className="h-4 w-4 mr-1" />
+                      <span className="text-sm">Preparing download...</span>
+                    </div>
                   )}
                 </div>
               </div>
@@ -974,6 +1133,7 @@ const CodaDocScraper = () => {
               selectedTables={selectedTables}
               setSelectedTables={setSelectedTables}
               onCopyTable={handleCopyTableData}
+              onDownloadTable={handleDownloadTableData}
               onSelectRowsOption={handleSelectRowsOption}
               rowOptions={rowOptions}
               selectedRowCounts={selectedRowCounts}
