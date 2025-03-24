@@ -795,18 +795,7 @@ const CodaDocScraper = () => {
               </div>
               
               <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Document Name
-                    <input
-                      type="text"
-                      value={docName}
-                      onChange={(e) => setDocName(e.target.value)}
-                      className="w-full p-2 border rounded-md mt-1"
-                      placeholder="Enter a name for this document"
-                    />
-                  </label>
-                </div>
+                {/* Document name is fetched automatically */}
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                   <div>
@@ -867,10 +856,17 @@ const CodaDocScraper = () => {
                   
                   <button
                     onClick={() => saveDocument()}
-                    disabled={!apiToken || !docId || !docName}
-                    className="px-3 py-1.5 bg-blue-500 text-white rounded-md hover:bg-blue-600 disabled:bg-blue-300 disabled:cursor-not-allowed"
+                    disabled={!apiToken || !docId || loading}
+                    className="px-3 py-1.5 bg-blue-500 text-white rounded-md hover:bg-blue-600 disabled:bg-blue-300 disabled:cursor-not-allowed flex items-center"
                   >
-                    Save Document
+                    {loading ? (
+                      <>
+                        <LoadingSpinner className="h-4 w-4 mr-2" />
+                        Saving...
+                      </>
+                    ) : (
+                      'Save Document'
+                    )}
                   </button>
                 </div>
               </div>

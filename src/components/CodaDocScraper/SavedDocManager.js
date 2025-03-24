@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { TrashIcon } from '../DataDisplay/Icons';
+import { TrashIcon, LoadingSpinner } from '../DataDisplay/Icons';
+import axios from 'axios';
 
 const SavedDocManager = ({ 
   savedDocs, 
@@ -7,13 +8,12 @@ const SavedDocManager = ({
   onSave, 
   onRemove, 
   currentToken, 
-  currentDocId, 
-  currentDocName 
+  currentDocId 
 }) => {
   const [showAddForm, setShowAddForm] = useState(false);
   const [newApiToken, setNewApiToken] = useState('');
   const [newDocId, setNewDocId] = useState('');
-  const [newDocName, setNewDocName] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
   const [formErrors, setFormErrors] = useState({});
 
   // When editing an existing document, pre-fill the form
@@ -21,14 +21,12 @@ const SavedDocManager = ({
     if (showAddForm && currentToken && currentDocId) {
       setNewApiToken(currentToken);
       setNewDocId(currentDocId);
-      setNewDocName(currentDocName || '');
     }
-  }, [showAddForm, currentToken, currentDocId, currentDocName]);
+  }, [showAddForm, currentToken, currentDocId]);
 
   const handleAddNew = () => {
     setNewApiToken('');
     setNewDocId('');
-    setNewDocName('');
     setFormErrors({});
     setShowAddForm(true);
   };
@@ -48,27 +46,44 @@ const SavedDocManager = ({
       errors.docId = 'Document ID contains invalid characters';
     }
     
-    if (!newDocName) {
-      errors.docName = 'Document name is required';
-    }
-    
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
   };
 
-  const handleSaveDoc = () => {
+  const handleFetchAndSaveDoc = async () => {
     if (!validateForm()) {
       return;
     }
     
-    onSave({
-      apiToken: newApiToken,
-      docId: newDocId,
-      docName: newDocName,
-      savedAt: new Date().toISOString()
-    });
+    setIsLoading(true);
     
-    setShowAddForm(false);
+    try {
+      // Fetch the document details to get the name
+      const response = await axios.get(
+        `https://coda.io/apis/v1/docs/${newDocId}`,
+        { headers: { Authorization: `Bearer ${newApiToken}` } }
+      );
+      
+      // Save the document with the fetched name
+      onSave({
+        apiToken: newApiToken,
+        docId: newDocId,
+        docName: response.data.name || `Doc ${newDocId}`,
+        savedAt: new Date().toISOString()
+      });
+      
+      setShowAddForm(false);
+    } catch (error) {
+      console.error('Error fetching document details:', error);
+      setFormErrors({
+        ...formErrors,
+        apiToken: error.response?.status === 401 ? 'Invalid API token' : undefined,
+        docId: error.response?.status === 404 ? 'Document not found' : undefined,
+        general: 'Failed to fetch document details. Please check your inputs and try again.'
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleCancel = () => {
@@ -81,22 +96,6 @@ const SavedDocManager = ({
       
       {showAddForm ? (
         <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Document Name
-              <input
-                type="text"
-                value={newDocName}
-                onChange={(e) => setNewDocName(e.target.value)}
-                className={`w-full p-2 border rounded-md mt-1 ${formErrors.docName ? 'border-red-500' : ''}`}
-                placeholder="Enter a name for this document"
-              />
-            </label>
-            {formErrors.docName && (
-              <p className="text-red-500 text-xs mt-1">{formErrors.docName}</p>
-            )}
-          </div>
-          
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               API Token
@@ -129,20 +128,38 @@ const SavedDocManager = ({
             )}
           </div>
           
+          {formErrors.general && (
+            <div className="p-3 bg-red-50 border border-red-200 rounded-md text-red-600 text-sm">
+              {formErrors.general}
+            </div>
+          )}
+          
           <div className="flex space-x-2 pt-2">
             <button
-              onClick={handleSaveDoc}
-              className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600"
+              onClick={handleFetchAndSaveDoc}
+              disabled={isLoading}
+              className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 disabled:bg-blue-300 disabled:cursor-not-allowed flex items-center"
             >
-              Save Document
+              {isLoading ? (
+                <>
+                  <LoadingSpinner className="h-4 w-4 mr-2" />
+                  Fetching...
+                </>
+              ) : (
+                'Add Document'
+              )}
             </button>
             <button
               onClick={handleCancel}
-              className="px-4 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400"
+              disabled={isLoading}
+              className="px-4 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Cancel
             </button>
           </div>
+          <p className="text-xs text-gray-500 mt-2">
+            Note: The document name will be automatically fetched from Coda.
+          </p>
         </div>
       ) : (
         <div>
@@ -160,7 +177,7 @@ const SavedDocManager = ({
                         className="text-left flex-grow"
                       >
                         <div className="font-medium text-blue-600">{doc.docName}</div>
-                        <div className="text-xs text-gray-500 mt-1">ID: {doc.docId}</div>
+                        <div className="text-xs text-gray-500 mt-1">ID: {doc.docId.substring(0, 12)}{doc.docId.length > 12 ? '...' : ''}</div>
                         <div className="text-xs text-gray-500">
                           Last used: {new Date(doc.savedAt).toLocaleDateString()}
                         </div>
