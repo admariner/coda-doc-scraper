@@ -74,7 +74,7 @@ const TableListView = ({
             {tables.map((table) => (
               <tr 
                 key={table.id}
-                className={selectedTables.has(table.id) ? 'bg-blue-50' : 'hover:bg-gray-50'}
+                className={selectedTables.has(table.id) ? 'bg-blue-50' : table.isView ? 'bg-amber-50 hover:bg-amber-100' : 'hover:bg-gray-50'}
               >
                 <td className="px-6 py-4 whitespace-nowrap">
                   <input
@@ -86,9 +86,16 @@ const TableListView = ({
                   />
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
-                  <label htmlFor={`table-${table.id}`} className="font-medium text-gray-900">
-                    {table.name}
-                  </label>
+                  <div>
+                    <label htmlFor={`table-${table.id}`} className="font-medium text-gray-900">
+                      {table.name}
+                    </label>
+                    {table.isView && (
+                      <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-800">
+                        View
+                      </span>
+                    )}
+                  </div>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                   {table.rowCount}

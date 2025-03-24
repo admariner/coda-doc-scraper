@@ -12,6 +12,7 @@ import TableListView from './TableListView';
 import ColumnFilter from './ColumnFilter';
 import FormatToggle from './FormatToggle';
 import SavedDocsDropdown from './SavedDocsDropdown';
+import SavedDocManager from './SavedDocManager';
 import GlobalAttributeSelector from './GlobalAttributeSelector';
 import TableAttributeOverrides from './TableAttributeOverrides';
 
@@ -44,18 +45,15 @@ const CodaDocScraper = () => {
   
   // Global attributes and per-table overrides
   const [globalColumnAttributes, setGlobalColumnAttributes] = useState([
-    'id',
     'name',
     'display',
     'format',
     'formula',
     'defaultValue',
+    'type',
   ]);
   const [globalRowAttributes, setGlobalRowAttributes] = useState([
-    'id',
     'values',
-    'createdAt',
-    'name',
   ]);
   const [tableColumnOverrides, setTableColumnOverrides] = useState({});
   const [tableRowOverrides, setTableRowOverrides] = useState({});
@@ -85,6 +83,9 @@ const CodaDocScraper = () => {
     localStorage.setItem('codaDocId', docId);
   }, [docId]);
 
+  // State for managing document selection
+  const [showDocManager, setShowDocManager] = useState(true);
+  
   // Callback to update tableData when filtered data changes in a TableCard
   const onTableDataChange = (tableId, filteredData) => {
     setTableData((prev) => ({
@@ -157,7 +158,9 @@ const CodaDocScraper = () => {
           return { 
             ...table, 
             rowCount: tableDetails.data.rowCount,
-            updatedAt: tableDetails.data.updatedAt || new Date().toISOString()
+            updatedAt: tableDetails.data.updatedAt || new Date().toISOString(),
+            // Check if this is a view based on tableType
+            isView: tableDetails.data.tableType === 'view'
           };
         })
       );
@@ -185,6 +188,15 @@ const CodaDocScraper = () => {
         loadingStatus[table.id] = 'pending';
       });
       setTableLoadingStatus(loadingStatus);
+      
+      // Initialize selectedTables with non-view tables
+      const selectedTableSet = new Set();
+      tablesWithRowCount.forEach(table => {
+        if (!table.isView) {
+          selectedTableSet.add(table.id);
+        }
+      });
+      setSelectedTables(selectedTableSet);
     } catch (err) {
       console.error('Error fetching tables:', err);
       setError('Failed to fetch tables. Please check your API token and document ID.');
@@ -287,32 +299,40 @@ const CodaDocScraper = () => {
     setTableColumnOverrides({});
     setTableRowOverrides({});
     setShowAttributeSettings(false);
+    setShowDocManager(true);
     localStorage.removeItem('codaApiToken');
     localStorage.removeItem('codaDocId');
     showToast('Reset successful', 'success');
   };
   
   // Save document to localStorage
-  const saveDocument = () => {
-    if (!apiToken || !docId || !docName) {
-      setError('API Token, Document ID, and Document Name are required to save');
-      return;
-    }
-    
-    const newDoc = {
+  const saveDocument = (docToSave = null) => {
+    const docData = docToSave || {
       apiToken,
       docId,
       docName,
       savedAt: new Date().toISOString()
     };
     
+    if (!docData.apiToken || !docData.docId || !docData.docName) {
+      setError('API Token, Document ID, and Document Name are required to save');
+      return;
+    }
+    
     // Check if doc already exists
-    const updatedDocs = savedDocs.filter(doc => doc.docId !== docId);
-    updatedDocs.push(newDoc);
+    const updatedDocs = savedDocs.filter(doc => doc.docId !== docData.docId);
+    updatedDocs.push(docData);
     
     setSavedDocs(updatedDocs);
     localStorage.setItem('codaSavedDocs', JSON.stringify(updatedDocs));
-    showToast(`Document "${docName}" saved`, 'success');
+    showToast(`Document "${docData.docName}" saved`, 'success');
+    
+    // If not in document manager view, set current doc
+    if (!showDocManager) {
+      setApiToken(docData.apiToken);
+      setDocId(docData.docId);
+      setDocName(docData.docName);
+    }
   };
   
   // Remove saved document
@@ -321,6 +341,16 @@ const CodaDocScraper = () => {
     setSavedDocs(updatedDocs);
     localStorage.setItem('codaSavedDocs', JSON.stringify(updatedDocs));
     showToast('Document removed from saved list', 'success');
+    
+    // If we removed the current document, clear the form
+    if (docId === docIdToRemove) {
+      setApiToken('');
+      setDocId('');
+      setDocName('');
+      setTables([]);
+      setSelectedTables(new Set());
+      setTableData({});
+    }
   };
   
   // Load saved document
@@ -341,8 +371,17 @@ const CodaDocScraper = () => {
     setColumnsData({});
     setSelectedColumns({});
     setPreviewJsonData({});
+    setShowDocManager(false);
     
     showToast(`Loaded document: ${doc.docName}`, 'success');
+  };
+  
+  // Handle "Add New Document" button
+  const handleAddNewDoc = () => {
+    setApiToken('');
+    setDocId('');
+    setDocName('');
+    setShowDocManager(false);
   };
   
   // Show toast message
@@ -696,11 +735,20 @@ const CodaDocScraper = () => {
     setPreviewJsonData(previewData);
   };
   
-  // When selected tables change, update the preview JSON
+  // When any data selection settings change, update the preview JSON
   useEffect(() => {
     updatePreviewJson();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedTables, tableData, selectedColumns]);
+  }, [
+    selectedTables, 
+    tableData, 
+    selectedColumns, 
+    formatMode, 
+    globalColumnAttributes, 
+    globalRowAttributes, 
+    tableColumnOverrides, 
+    tableRowOverrides
+  ]);
 
   // Row selector options
   const rowOptions = [
@@ -719,87 +767,115 @@ const CodaDocScraper = () => {
         <div className="w-full xl:w-3/5 space-y-6">
           {/* Welcome Card */}
           <WelcomeCard />
-
-          {/* API Token and Document ID Form */}
-          <div className="bg-white p-6 border rounded-lg shadow-md">
-            <h2 className="text-lg font-bold mb-4">API Token and Document ID</h2>
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    API Token
-                    <input
-                      type="password"
-                      value={apiToken}
-                      onChange={(e) => {
-                        setApiToken(e.target.value);
-                        setApiTokenError('');
-                      }}
-                      className={`w-full p-2 border rounded-md mt-1 ${apiTokenError ? 'border-red-500' : ''}`}
-                      placeholder="Enter your Coda API token"
-                    />
-                  </label>
-                  {apiTokenError && (
-                    <p className="text-red-500 text-xs mt-1">{apiTokenError}</p>
-                  )}
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Document ID
-                    <input
-                      type="text"
-                      value={docId}
-                      onChange={(e) => {
-                        setDocId(e.target.value);
-                        setDocIdError('');
-                      }}
-                      className={`w-full p-2 border rounded-md mt-1 ${docIdError ? 'border-red-500' : ''}`}
-                      placeholder="Enter your Coda Document ID"
-                    />
-                  </label>
-                  {docIdError && (
-                    <p className="text-red-500 text-xs mt-1">{docIdError}</p>
-                  )}
+          
+          {/* Document Manager */}
+          {showDocManager ? (
+            <SavedDocManager 
+              savedDocs={savedDocs}
+              onSelect={loadSavedDoc}
+              onSave={saveDocument}
+              onRemove={removeSavedDoc}
+              currentToken={apiToken}
+              currentDocId={docId}
+              currentDocName={docName}
+            />
+          ) : (
+            /* API Token and Document ID Form */
+            <div className="bg-white p-6 border rounded-lg shadow-md">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-lg font-bold">Document Settings</h2>
+                <div className="flex space-x-2">
+                  <button
+                    onClick={() => setShowDocManager(true)}
+                    className="px-3 py-1.5 text-sm bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200"
+                  >
+                    Document Manager
+                  </button>
                 </div>
               </div>
               
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex space-x-2">
-                  <button
-                    onClick={handleLoadTables}
-                    disabled={loading || !apiToken || !docId}
-                    className="px-4 py-1.5 bg-blue-500 text-white rounded-md hover:bg-blue-600 disabled:bg-blue-300 disabled:cursor-not-allowed flex items-center justify-center"
-                  >
-                    {loading ? 'Loading...' : 'Get Tables'}
-                  </button>
-                  <button
-                    onClick={handleReset}
-                    className="px-3 py-1.5 bg-gray-500 text-white rounded-md hover:bg-gray-600 flex items-center justify-center"
-                    title="Reset Form"
-                  >
-                    <RefreshIcon className="h-4 w-4" />
-                  </button>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Document Name
+                    <input
+                      type="text"
+                      value={docName}
+                      onChange={(e) => setDocName(e.target.value)}
+                      className="w-full p-2 border rounded-md mt-1"
+                      placeholder="Enter a name for this document"
+                    />
+                  </label>
                 </div>
                 
-                <div className="flex space-x-2 items-center">
-                  <div className="w-48">
-                    <SavedDocsDropdown 
-                      savedDocs={savedDocs}
-                      onSelect={loadSavedDoc}
-                      onRemove={removeSavedDoc}
-                    />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      API Token
+                      <input
+                        type="password"
+                        value={apiToken}
+                        onChange={(e) => {
+                          setApiToken(e.target.value);
+                          setApiTokenError('');
+                        }}
+                        className={`w-full p-2 border rounded-md mt-1 ${apiTokenError ? 'border-red-500' : ''}`}
+                        placeholder="Enter your Coda API token"
+                      />
+                    </label>
+                    {apiTokenError && (
+                      <p className="text-red-500 text-xs mt-1">{apiTokenError}</p>
+                    )}
                   </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Document ID
+                      <input
+                        type="text"
+                        value={docId}
+                        onChange={(e) => {
+                          setDocId(e.target.value);
+                          setDocIdError('');
+                        }}
+                        className={`w-full p-2 border rounded-md mt-1 ${docIdError ? 'border-red-500' : ''}`}
+                        placeholder="Enter your Coda Document ID"
+                      />
+                    </label>
+                    {docIdError && (
+                      <p className="text-red-500 text-xs mt-1">{docIdError}</p>
+                    )}
+                  </div>
+                </div>
+                
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex space-x-2">
+                    <button
+                      onClick={handleLoadTables}
+                      disabled={loading || !apiToken || !docId}
+                      className="px-4 py-1.5 bg-blue-500 text-white rounded-md hover:bg-blue-600 disabled:bg-blue-300 disabled:cursor-not-allowed flex items-center justify-center"
+                    >
+                      {loading ? 'Loading...' : 'Get Tables'}
+                    </button>
+                    <button
+                      onClick={handleReset}
+                      className="px-3 py-1.5 bg-gray-500 text-white rounded-md hover:bg-gray-600 flex items-center justify-center"
+                      title="Reset Form"
+                    >
+                      <RefreshIcon className="h-4 w-4" />
+                    </button>
+                  </div>
+                  
                   <button
-                    onClick={saveDocument}
+                    onClick={() => saveDocument()}
                     disabled={!apiToken || !docId || !docName}
                     className="px-3 py-1.5 bg-blue-500 text-white rounded-md hover:bg-blue-600 disabled:bg-blue-300 disabled:cursor-not-allowed"
                   >
-                    Save Doc
+                    Save Document
                   </button>
                 </div>
               </div>
             </div>
-          </div>
+          )}
 
           {/* Format and Attributes Controls */}
           {tables.length > 0 && (

@@ -50,6 +50,7 @@ const GlobalAttributeSelector = ({
                 ? 'bg-blue-100 text-blue-800 border border-blue-300'
                 : 'bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200'
             }`}
+            title={selectedAttributes.includes(attribute) ? "Click to remove" : "Click to add"}
           >
             {attribute}
           </button>

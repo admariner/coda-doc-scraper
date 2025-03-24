@@ -12,6 +12,7 @@ const FormatToggle = ({ formatMode, onToggle }) => {
               ? 'bg-blue-600 text-white'
               : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
           }`}
+          title="Group data by columns with row values nested"
         >
           Column-Centric
         </button>
@@ -22,6 +23,7 @@ const FormatToggle = ({ formatMode, onToggle }) => {
               ? 'bg-blue-600 text-white'
               : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
           }`}
+          title="Group data by rows with column values as properties"
         >
           Row-Centric
         </button>
