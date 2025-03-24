@@ -1,5 +1,5 @@
 import React from 'react';
-import { CopyIcon, LoadingSpinner } from '../DataDisplay/Icons';
+import { CopyIcon, LoadingSpinner, RefreshIcon } from '../DataDisplay/Icons';
 
 const TableListView = ({
   tables,
@@ -9,7 +9,8 @@ const TableListView = ({
   onSelectRowsOption,
   rowOptions,
   selectedRowCounts,
-  isCopying
+  isCopying,
+  tableLoadingStatus
 }) => {
   const handleSelectTable = (tableId) => {
     const newSelectedTables = new Set(selectedTables);
@@ -96,7 +97,7 @@ const TableListView = ({
                   {new Date(table.updatedAt || Date.now()).toLocaleDateString()}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="flex space-x-2">
+                  <div className="flex space-x-2 items-center">
                     {rowOptions.map((option) => (
                       <button
                         key={`${table.id}-${option.value}`}
@@ -113,6 +114,27 @@ const TableListView = ({
                         {option.label}
                       </button>
                     ))}
+                    
+                    {/* Loading indicator */}
+                    {tableLoadingStatus[table.id] === 'loading' && (
+                      <span className="ml-2 inline-flex items-center text-blue-500">
+                        <LoadingSpinner className="animate-spin h-4 w-4 mr-1" />
+                        <span className="text-xs">Loading...</span>
+                      </span>
+                    )}
+                    {tableLoadingStatus[table.id] === 'error' && (
+                      <span className="ml-2 inline-flex items-center text-red-500 text-xs">
+                        Error loading data
+                      </span>
+                    )}
+                    {tableLoadingStatus[table.id] === 'loaded' && (
+                      <span className="ml-2 inline-flex items-center text-green-500 text-xs">
+                        <svg className="h-3 w-3 mr-1" viewBox="0 0 20 20" fill="currentColor">
+                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                        </svg>
+                        Ready
+                      </span>
+                    )}
                   </div>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">

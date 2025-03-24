@@ -12,6 +12,8 @@ import TableListView from './TableListView';
 import ColumnFilter from './ColumnFilter';
 import FormatToggle from './FormatToggle';
 import SavedDocsDropdown from './SavedDocsDropdown';
+import GlobalAttributeSelector from './GlobalAttributeSelector';
+import TableAttributeOverrides from './TableAttributeOverrides';
 
 const CodaDocScraper = () => {
   const [apiToken, setApiToken] = useState(localStorage.getItem('codaApiToken') || '');
@@ -32,12 +34,32 @@ const CodaDocScraper = () => {
   const [selectedColumns, setSelectedColumns] = useState({});
   const [previewJsonData, setPreviewJsonData] = useState({});
   const [tableIsCopying, setTableIsCopying] = useState({});
+  const [tableLoadingStatus, setTableLoadingStatus] = useState({});
   const [showColumnFilter, setShowColumnFilter] = useState(null);
   const [formatMode, setFormatMode] = useState('column-centric');
   const [docName, setDocName] = useState('');
   const [savedDocs, setSavedDocs] = useState(
     JSON.parse(localStorage.getItem('codaSavedDocs') || '[]')
   );
+  
+  // Global attributes and per-table overrides
+  const [globalColumnAttributes, setGlobalColumnAttributes] = useState([
+    'id',
+    'name',
+    'display',
+    'format',
+    'formula',
+    'defaultValue',
+  ]);
+  const [globalRowAttributes, setGlobalRowAttributes] = useState([
+    'id',
+    'values',
+    'createdAt',
+    'name',
+  ]);
+  const [tableColumnOverrides, setTableColumnOverrides] = useState({});
+  const [tableRowOverrides, setTableRowOverrides] = useState({});
+  const [showAttributeSettings, setShowAttributeSettings] = useState(false);
 
   // State for selected column and row attributes
   const [selectedColumnAttributes, setSelectedColumnAttributes] = useState([
@@ -156,6 +178,13 @@ const CodaDocScraper = () => {
         copyingState[table.id] = false;
       });
       setTableIsCopying(copyingState);
+      
+      // Initialize tableLoadingStatus state to 'pending' for all tables
+      const loadingStatus = {};
+      tablesWithRowCount.forEach(table => {
+        loadingStatus[table.id] = 'pending';
+      });
+      setTableLoadingStatus(loadingStatus);
     } catch (err) {
       console.error('Error fetching tables:', err);
       setError('Failed to fetch tables. Please check your API token and document ID.');
@@ -252,8 +281,12 @@ const CodaDocScraper = () => {
     setSelectedColumns({});
     setPreviewJsonData({});
     setTableIsCopying({});
+    setTableLoadingStatus({});
     setShowColumnFilter(null);
     setDocName('');
+    setTableColumnOverrides({});
+    setTableRowOverrides({});
+    setShowAttributeSettings(false);
     localStorage.removeItem('codaApiToken');
     localStorage.removeItem('codaDocId');
     showToast('Reset successful', 'success');
@@ -359,13 +392,34 @@ const CodaDocScraper = () => {
       [tableId]: rowCount
     }));
     
-    // If columns haven't been fetched yet, fetch them
-    if (!columnsData[tableId]) {
-      await fetchColumnsForTable(tableId);
-    }
+    // Set loading status for this table
+    setTableLoadingStatus(prev => ({
+      ...prev,
+      [tableId]: 'loading'
+    }));
     
-    // Fetch rows based on the selected row count
-    await fetchAndProcessTableData(tableId, rowCount);
+    try {
+      // If columns haven't been fetched yet, fetch them
+      if (!columnsData[tableId]) {
+        await fetchColumnsForTable(tableId);
+      }
+      
+      // Fetch rows based on the selected row count
+      await fetchAndProcessTableData(tableId, rowCount);
+      
+      // Set loading status to loaded
+      setTableLoadingStatus(prev => ({
+        ...prev,
+        [tableId]: 'loaded'
+      }));
+    } catch (err) {
+      // Set loading status to error
+      setTableLoadingStatus(prev => ({
+        ...prev,
+        [tableId]: 'error'
+      }));
+      console.error(`Error loading table ${tableId}:`, err);
+    }
   };
   
   // Copy data for a specific table
@@ -455,6 +509,55 @@ const CodaDocScraper = () => {
     }
   };
   
+  // Get effective attributes for a table (either override or global)
+  const getEffectiveColumnAttributes = (tableId) => {
+    return tableColumnOverrides[tableId] || globalColumnAttributes;
+  };
+  
+  const getEffectiveRowAttributes = (tableId) => {
+    return tableRowOverrides[tableId] || globalRowAttributes;
+  };
+  
+  // Update table-specific overrides
+  const updateColumnOverride = (tableId, attributes) => {
+    setTableColumnOverrides(prev => ({
+      ...prev,
+      [tableId]: attributes
+    }));
+    
+    // Update JSON preview
+    updatePreviewJson();
+  };
+  
+  const updateRowOverride = (tableId, attributes) => {
+    setTableRowOverrides(prev => ({
+      ...prev,
+      [tableId]: attributes
+    }));
+    
+    // Update JSON preview
+    updatePreviewJson();
+  };
+  
+  const resetOverride = (tableId, type) => {
+    if (type === 'columns') {
+      setTableColumnOverrides(prev => {
+        const newOverrides = { ...prev };
+        delete newOverrides[tableId];
+        return newOverrides;
+      });
+    } else if (type === 'rows') {
+      setTableRowOverrides(prev => {
+        const newOverrides = { ...prev };
+        delete newOverrides[tableId];
+        return newOverrides;
+      });
+    }
+    
+    // Update JSON preview
+    updatePreviewJson();
+  };
+  
   // Process table data to the desired format
   const processTableData = (tableId) => {
     const data = tableData[tableId];
@@ -463,6 +566,10 @@ const CodaDocScraper = () => {
     const columns = columnsData[tableId] || [];
     const rows = data.rows || [];
     const selectedColIds = selectedColumns[tableId] || [];
+    
+    // Get effective attributes for this table
+    const effectiveColumnAttrs = getEffectiveColumnAttributes(tableId);
+    const effectiveRowAttrs = getEffectiveRowAttributes(tableId);
     
     // Create a mapping from column ID to column name
     const columnIdToNameMap = {};
@@ -477,27 +584,38 @@ const CodaDocScraper = () => {
       // Create structured data (column-centric)
       const structuredData = {};
       
-      // Add column definitions
+      // Add column definitions with only selected attributes
       filteredColumns.forEach(column => {
+        // Filter column object to only include selected attributes
+        const filteredColumn = Object.keys(column)
+          .filter(key => effectiveColumnAttrs.includes(key))
+          .reduce((obj, key) => {
+            obj[key] = column[key];
+            return obj;
+          }, {});
+        
         structuredData[column.name] = {
-          ...column,
+          ...filteredColumn,
           rows: []
         };
       });
       
-      // Add row data under each column
+      // Add row data under each column with only selected attributes
       rows.forEach(row => {
         if (row.values) {
+          // Filter row object to only include selected attributes
+          const rowBase = Object.keys(row)
+            .filter(key => effectiveRowAttrs.includes(key) && key !== 'values')
+            .reduce((obj, key) => {
+              obj[key] = row[key];
+              return obj;
+            }, {});
+            
           Object.entries(row.values).forEach(([columnId, value]) => {
             const columnName = columnIdToNameMap[columnId];
             if (structuredData[columnName]) {
-              // Include relevant row metadata with each value
-              const rowMetadata = {};
-              if (row.name) rowMetadata.name = row.name;
-              if (row.createdAt) rowMetadata.createdAt = row.createdAt;
-              
               structuredData[columnName].rows.push({
-                ...rowMetadata,
+                ...rowBase,
                 value
               });
             }
@@ -509,20 +627,29 @@ const CodaDocScraper = () => {
     } else {
       // Row-centric format
       const structuredData = {
-        columns: filteredColumns,
+        columns: filteredColumns.map(column => {
+          // Filter column object to only include selected attributes
+          return Object.keys(column)
+            .filter(key => effectiveColumnAttrs.includes(key))
+            .reduce((obj, key) => {
+              obj[key] = column[key];
+              return obj;
+            }, {});
+        }),
         rows: []
       };
       
-      // Process rows
+      // Process rows with only selected attributes
       rows.forEach(row => {
         if (!row.values) return;
         
-        const rowData = {
-          id: row.id,
-          name: row.name,
-          createdAt: row.createdAt,
-          values: {}
-        };
+        // Filter row to only include selected attributes
+        const rowData = Object.keys(row)
+          .filter(key => effectiveRowAttrs.includes(key) && key !== 'values')
+          .reduce((obj, key) => {
+            obj[key] = row[key];
+            return obj;
+          }, { values: {} });
         
         // Add values only for the selected columns
         filteredColumns.forEach(col => {
@@ -674,38 +801,96 @@ const CodaDocScraper = () => {
             </div>
           </div>
 
-          {/* Format Toggle */}
+          {/* Format and Attributes Controls */}
           {tables.length > 0 && (
-            <div className="bg-white p-4 border rounded-lg shadow-md flex justify-between items-center">
-              <div className="flex items-center space-x-4">
-                <FormatToggle 
-                  formatMode={formatMode}
-                  onToggle={setFormatMode}
-                />
+            <div className="bg-white p-4 border rounded-lg shadow-md">
+              <div className="flex flex-wrap justify-between items-center gap-3 mb-2">
+                <div className="flex flex-wrap items-center gap-4">
+                  <FormatToggle 
+                    formatMode={formatMode}
+                    onToggle={setFormatMode}
+                  />
+                  
+                  <button
+                    onClick={() => setShowAttributeSettings(!showAttributeSettings)}
+                    className={`px-3 py-1.5 text-sm rounded-md ${
+                      showAttributeSettings 
+                        ? 'bg-blue-100 text-blue-800 border border-blue-200' 
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                  >
+                    {showAttributeSettings ? 'Hide Attribute Settings' : 'Attribute Settings'}
+                  </button>
+                </div>
                 
-                <button
-                  onClick={handleCopyAllTables}
-                  disabled={selectedTables.size === 0 || copyLoading}
-                  className="px-3 py-1.5 bg-green-500 text-white rounded-md hover:bg-green-600 disabled:bg-green-300 disabled:cursor-not-allowed flex items-center justify-center"
-                >
-                  {copyLoading ? (
-                    <>
-                      <LoadingSpinner className="h-4 w-4 mr-2" />
-                      Copying...
-                    </>
-                  ) : (
-                    <>
-                      <CopyIcon className="h-4 w-4 mr-2" />
-                      Copy All Selected
-                    </>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={handleCopyAllTables}
+                    disabled={selectedTables.size === 0 || copyLoading}
+                    className="px-3 py-1.5 bg-green-500 text-white rounded-md hover:bg-green-600 disabled:bg-green-300 disabled:cursor-not-allowed flex items-center justify-center"
+                  >
+                    {copyLoading ? (
+                      <>
+                        <LoadingSpinner className="h-4 w-4 mr-2" />
+                        Copying...
+                      </>
+                    ) : (
+                      <>
+                        <CopyIcon className="h-4 w-4 mr-2" />
+                        Copy All Selected
+                      </>
+                    )}
+                  </button>
+                  
+                  {selectedTables.size > 0 && (
+                    <span className="text-sm text-gray-500">
+                      {selectedTables.size} table{selectedTables.size !== 1 ? 's' : ''} selected
+                    </span>
                   )}
-                </button>
+                </div>
               </div>
               
-              {selectedTables.size > 0 && (
-                <span className="text-sm text-gray-500">
-                  {selectedTables.size} table{selectedTables.size !== 1 ? 's' : ''} selected
-                </span>
+              {/* Global Attribute Selectors */}
+              {showAttributeSettings && (
+                <div className="mt-4 border-t pt-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <GlobalAttributeSelector 
+                      title="Column Attributes"
+                      attributes={[
+                        'id', 'name', 'display', 'format', 'formula', 
+                        'defaultValue', 'href', 'calculated', 'type'
+                      ]}
+                      selectedAttributes={globalColumnAttributes}
+                      onChange={setGlobalColumnAttributes}
+                      description="Select which column attributes to include in the JSON output."
+                    />
+                    
+                    <GlobalAttributeSelector 
+                      title="Row Attributes"
+                      attributes={[
+                        'id', 'name', 'values', 'createdAt', 'updatedAt', 
+                        'href', 'index', 'browserLink'
+                      ]}
+                      selectedAttributes={globalRowAttributes}
+                      onChange={setGlobalRowAttributes}
+                      description="Select which row attributes to include in the JSON output."
+                    />
+                  </div>
+                  
+                  {/* Per-table overrides */}
+                  <div className="mt-4">
+                    <TableAttributeOverrides 
+                      tables={tables}
+                      globalColumnAttributes={globalColumnAttributes}
+                      globalRowAttributes={globalRowAttributes}
+                      tableColumnOverrides={tableColumnOverrides}
+                      tableRowOverrides={tableRowOverrides}
+                      onUpdateColumnOverride={updateColumnOverride}
+                      onUpdateRowOverride={updateRowOverride}
+                      onResetOverride={resetOverride}
+                    />
+                  </div>
+                </div>
               )}
             </div>
           )}
@@ -721,6 +906,7 @@ const CodaDocScraper = () => {
               rowOptions={rowOptions}
               selectedRowCounts={selectedRowCounts}
               isCopying={tableIsCopying}
+              tableLoadingStatus={tableLoadingStatus}
             />
           )}
 
