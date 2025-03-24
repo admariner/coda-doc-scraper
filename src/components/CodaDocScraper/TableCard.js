@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { ChevronDown, ChevronRight } from 'lucide-react';
-import { CopyIcon, TrashIcon } from '../DataDisplay/Icons';
+import { CopyIcon, TrashIcon, LoadingSpinner } from '../DataDisplay/Icons';
 
 const TableCard = ({
   table,
@@ -14,9 +14,12 @@ const TableCard = ({
 }) => {
   const [rowCount, setRowCount] = useState('1'); // Default to "1 Row"
   const [tableData, setTableData] = useState({ columns: [], rows: [] });
+  const [columnIdToNameMap, setColumnIdToNameMap] = useState({});
   const [isExpanded, setIsExpanded] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  const [isCopying, setIsCopying] = useState(false);
+  const [copySuccess, setCopySuccess] = useState(false);
 
   // Fetch column data when the table is selected
   useEffect(() => {
@@ -29,9 +32,20 @@ const TableCard = ({
           `https://coda.io/apis/v1/docs/${docId}/tables/${table.id}/columns`,
           { headers: { Authorization: `Bearer ${apiToken}` } }
         );
+        
+        // Create mapping from column ID to column name
+        const idToNameMap = {};
+        response.data.items.forEach(column => {
+          idToNameMap[column.id] = column.name;
+        });
+        setColumnIdToNameMap(idToNameMap);
+        
         const filteredColumns = filterData(response.data.items, selectedColumnAttributes);
         setTableData((prev) => ({ ...prev, columns: filteredColumns }));
-        onTableDataChange(table.id, { columns: filteredColumns, rows: tableData.rows }); // Update parent
+        
+        // Update parent with the traditional format for backward compatibility
+        // Later we'll transform this for display
+        onTableDataChange(table.id, { columns: filteredColumns, rows: tableData.rows });
       } catch (err) {
         console.error(`Error fetching columns for table ${table.id}:`, err);
         setError('Failed to fetch columns. Please check your inputs and try again.');
@@ -41,6 +55,7 @@ const TableCard = ({
     };
 
     fetchColumns();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [apiToken, docId, table.id, selectedColumnAttributes]);
 
   // Fetch row data when rowCount changes
@@ -67,7 +82,10 @@ const TableCard = ({
         );
         const filteredRows = filterData(response.data.items, selectedRowAttributes);
         setTableData((prev) => ({ ...prev, rows: filteredRows }));
-        onTableDataChange(table.id, { columns: tableData.columns, rows: filteredRows }); // Update parent
+        
+        // Update parent with the traditional format for backward compatibility
+        // Later we'll transform this for display
+        onTableDataChange(table.id, { columns: tableData.columns, rows: filteredRows });
       } catch (err) {
         console.error(`Error fetching rows for table ${table.id}:`, err);
         setError('Failed to fetch rows. Please check your inputs and try again.');
@@ -77,16 +95,65 @@ const TableCard = ({
     };
 
     fetchRows();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [apiToken, docId, table.id, rowCount, selectedRowAttributes]);
 
   // Handle copying table data
-  const handleCopyTableData = () => {
-    const filteredData = {
-      columns: filterData(tableData.columns, selectedColumnAttributes),
-      rows: filterData(tableData.rows, selectedRowAttributes),
-    };
-    navigator.clipboard.writeText(JSON.stringify(filteredData, null, 2));
-    alert('Table data copied to clipboard!');
+  const handleCopyTableData = async () => {
+    setIsCopying(true);
+    setCopySuccess(false);
+    try {
+      const structuredData = getProcessedData();
+      await navigator.clipboard.writeText(JSON.stringify(structuredData, null, 2));
+      setCopySuccess(true);
+      setTimeout(() => setCopySuccess(false), 2000);
+    } catch (err) {
+      console.error('Error copying table data:', err);
+      setError('Failed to copy table data');
+    } finally {
+      setIsCopying(false);
+    }
+  };
+
+  // Recursive object processing function is used instead of this simpler version
+  // for more complex nested structure handling
+
+  // Recursively process an object to simplify nested objects
+  const processObject = (obj) => {
+    if (!obj || typeof obj !== 'object') return obj;
+    
+    // Handle arrays
+    if (Array.isArray(obj)) {
+      return obj.map(item => processObject(item));
+    }
+    
+    // If object has a name property and other properties like 'table', 'id', etc. - just return the name
+    if (obj.name && (obj.table || obj.id || obj.type || obj.href)) {
+      return obj.name;
+    }
+    
+    // Otherwise process each property
+    const result = {};
+    for (const [key, value] of Object.entries(obj)) {
+      if (value && typeof value === 'object') {
+        result[key] = processObject(value);
+      } else {
+        result[key] = value;
+      }
+    }
+    return result;
+  };
+
+  // Replace column IDs with column names in values object
+  const replaceColumnIdsWithNames = (valuesObj) => {
+    if (!valuesObj || typeof valuesObj !== 'object') return valuesObj;
+    
+    const result = {};
+    for (const [columnId, value] of Object.entries(valuesObj)) {
+      const columnName = columnIdToNameMap[columnId] || columnId; // Fallback to id if name not found
+      result[columnName] = value;
+    }
+    return result;
   };
 
   // Filter data based on selected attributes
@@ -100,13 +167,20 @@ const TableCard = ({
         Object.entries(item)
           .filter(([key]) => selectedAttributes.includes(key))
           .map(([key, value]) => {
-            // If the key is "values" and it's an object, filter out empty string values
+            // Special handling for values - replace column IDs with names
             if (key === 'values' && typeof value === 'object' && value !== null) {
+              const namedValues = replaceColumnIdsWithNames(value);
               const filteredValues = Object.fromEntries(
-                Object.entries(value).filter(([, val]) => val !== '')
+                Object.entries(namedValues).filter(([, val]) => val !== '')
               );
               return [key, filteredValues];
             }
+            
+            // Process nested objects to simplify them
+            if (value && typeof value === 'object') {
+              return [key, processObject(value)];
+            }
+            
             return [key, value];
           })
           .filter(([, value]) => value !== null && value !== '' && value !== undefined)
@@ -126,6 +200,44 @@ const TableCard = ({
     { label: 'All Rows', value: 'All', color: 'gray' },
   ];
 
+  // Create a processed version of the data for display with rows nested under columns
+  const getProcessedData = () => {
+    const columns = filterData(tableData.columns, selectedColumnAttributes);
+    const rows = filterData(tableData.rows, selectedRowAttributes);
+    
+    // Create a more intuitive structure with rows nested under columns
+    const structuredData = {};
+    
+    // Add column definitions
+    columns.forEach(column => {
+      structuredData[column.name] = {
+        ...column,
+        rows: []
+      };
+    });
+    
+    // Add row data under each column
+    rows.forEach(row => {
+      if (row.values) {
+        Object.entries(row.values).forEach(([columnName, value]) => {
+          if (structuredData[columnName]) {
+            // Include relevant row metadata with each value
+            const rowMetadata = {};
+            if (row.name) rowMetadata.name = row.name;
+            if (row.createdAt) rowMetadata.createdAt = row.createdAt;
+            
+            structuredData[columnName].rows.push({
+              ...rowMetadata,
+              value
+            });
+          }
+        });
+      }
+    });
+    
+    return structuredData;
+  };
+
   return (
     <div className="bg-white p-4 border rounded-lg shadow-md mb-4">
       {/* Table Header */}
@@ -137,10 +249,20 @@ const TableCard = ({
         <div className="flex space-x-2">
           <button
             onClick={handleCopyTableData}
-            className="text-gray-500 hover:text-gray-700"
+            className="text-gray-500 hover:text-gray-700 relative"
             title="Copy Table Data"
+            disabled={isCopying}
           >
-            <CopyIcon className="h-5 w-5" />
+            {isCopying ? (
+              <LoadingSpinner className="h-5 w-5 text-blue-500" />
+            ) : (
+              <CopyIcon className={`h-5 w-5 ${copySuccess ? 'text-green-500' : ''}`} />
+            )}
+            {copySuccess && (
+              <span className="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-green-500 text-white text-xs py-1 px-2 rounded shadow-lg whitespace-nowrap">
+                Copied!
+              </span>
+            )}
           </button>
           <button
             onClick={() => onRemove(table.id)}
@@ -196,14 +318,7 @@ const TableCard = ({
             ) : (
               <div className="text-left font-mono text-sm bg-gray-50 p-4 rounded-md overflow-x-auto max-h-60">
                 <pre>
-                  {JSON.stringify(
-                    {
-                      columns: filterData(tableData.columns, selectedColumnAttributes),
-                      rows: filterData(tableData.rows, selectedRowAttributes),
-                    },
-                    null,
-                    2
-                  )}
+                  {JSON.stringify(getProcessedData(), null, 2)}
                 </pre>
               </div>
             )}

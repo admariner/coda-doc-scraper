@@ -8,8 +8,11 @@ A React-based application for fetching and displaying data from Coda documents u
 - **Select Tables**: Choose specific tables to fetch data from.
 - **Fetch Data**: Fetch rows and columns from selected tables based on the selected row count (Columns Only, 1 Row, or All Rows).
 - **Data Display**: View fetched data in a collapsible, scrollable JSON viewer.
+- **Intuitive Data Structure**: View data in a nested structure where row data is organized under each column for easier comprehension.
 - **Export Data**: Export fetched data as JSON.
 - **Copy Data**: Copy individual table data or concatenated data from all selected tables to the clipboard.
+- **Simplified Nested Objects**: Complex nested objects are displayed using only their names for clarity.
+- **Human-Readable Column IDs**: Column IDs in row values are replaced with their human-readable names.
 - **Error Handling**: Display error messages for invalid inputs or API errors.
 - **Persistent Configuration**: Save API token and document ID in localStorage for convenience.
 
@@ -47,6 +50,9 @@ A React-based application for fetching and displaying data from Coda documents u
 
 5. **View and Export Data**:
    - The fetched data will be displayed in a collapsible, scrollable JSON viewer.
+   - Data is organized in a column-centric structure, with row values nested under each column.
+   - Column IDs are replaced with their human-readable names.
+   - Complex nested objects are simplified to show only their names.
    - Use the copy icon to copy individual table data.
    - Use the "Copy All Tables" button to copy concatenated data from all selected tables.
 

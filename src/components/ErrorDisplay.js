@@ -8,4 +8,20 @@ const ErrorDisplay = ({ error }) => {
   );
 };
 
+export const Toast = ({ message, type = 'success', onClose }) => {
+  const bgColor = type === 'success' ? 'bg-green-500' : 'bg-red-500';
+  
+  return (
+    <div className={`fixed bottom-4 left-4 ${bgColor} text-white px-4 py-2 rounded-md shadow-md flex items-center z-50`}>
+      <span>{message}</span>
+      <button 
+        onClick={onClose} 
+        className="ml-2 text-white hover:text-gray-200"
+      >
+        ×
+      </button>
+    </div>
+  );
+};
+
 export default ErrorDisplay;

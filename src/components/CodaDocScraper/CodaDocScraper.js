@@ -4,9 +4,9 @@ import TableCard from './TableCard';
 import TableDropdown from './TableDropdown';
 import Header from '../Header';
 import WelcomeCard from '../WelcomeCard';
-import ErrorDisplay from '../ErrorDisplay';
+import ErrorDisplay, { Toast } from '../ErrorDisplay';
 import SkeletonLoader from './SkeletonLoader';
-import { CopyIcon, RefreshIcon } from '../DataDisplay/Icons';
+import { CopyIcon, RefreshIcon, LoadingSpinner } from '../DataDisplay/Icons';
 import AttributeSelector from './AttributeSelector';
 
 const CodaDocScraper = () => {
@@ -17,6 +17,10 @@ const CodaDocScraper = () => {
   const [tableData, setTableData] = useState({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [toast, setToast] = useState(null);
+  const [copyLoading, setCopyLoading] = useState(false);
+  const [apiTokenError, setApiTokenError] = useState('');
+  const [docIdError, setDocIdError] = useState('');
 
   // State for selected column and row attributes
   const [selectedColumnAttributes, setSelectedColumnAttributes] = useState([
@@ -50,10 +54,38 @@ const CodaDocScraper = () => {
     }));
   };
 
+  // Validate inputs
+  const validateInputs = () => {
+    let isValid = true;
+    
+    // Reset errors
+    setApiTokenError('');
+    setDocIdError('');
+    
+    // Validate API token
+    if (!apiToken) {
+      setApiTokenError('API Token is required');
+      isValid = false;
+    } else if (apiToken.length < 20) {
+      setApiTokenError('API Token appears to be invalid (too short)');
+      isValid = false;
+    }
+    
+    // Validate Doc ID
+    if (!docId) {
+      setDocIdError('Document ID is required');
+      isValid = false;
+    } else if (!docId.match(/^[a-zA-Z0-9_-]+$/)) {
+      setDocIdError('Document ID contains invalid characters');
+      isValid = false;
+    }
+    
+    return isValid;
+  };
+
   // Fetch tables when "Load Table Data" is clicked
   const handleLoadTables = async () => {
-    if (!apiToken || !docId) {
-      setError('Please provide an API Token and Document ID.');
+    if (!validateInputs()) {
       return;
     }
 
@@ -88,12 +120,13 @@ const CodaDocScraper = () => {
   };
 
   // Handle copying all selected tables
-  const handleCopyAllTables = () => {
+  const handleCopyAllTables = async () => {
     if (selectedTables.size === 0) {
       setError('No tables selected.');
       return;
     }
 
+    setCopyLoading(true);
     try {
       console.log('Copying data for all selected tables...');
 
@@ -104,21 +137,58 @@ const CodaDocScraper = () => {
       tables
         .filter((table) => selectedTables.has(table.id))
         .forEach((table) => {
-          // Get the table's data from the tableData state
-          const tableDataForTable = tableData[table.id];
-
-          if (tableDataForTable) {
-            // Wrap the table's data in its own object
-            allTableData[table.name] = tableDataForTable;
+          // Get the raw data for this table
+          const rawTableData = tableData[table.id];
+          
+          if (rawTableData) {
+            // Process the data for a more intuitive structure
+            // This mimics what TableCard.getProcessedData() does
+            const columns = rawTableData.columns || [];
+            const rows = rawTableData.rows || [];
+            
+            const structuredData = {};
+            
+            // Add column definitions
+            columns.forEach(column => {
+              structuredData[column.name] = {
+                ...column,
+                rows: []
+              };
+            });
+            
+            // Add row data under each column
+            rows.forEach(row => {
+              if (row.values) {
+                Object.entries(row.values).forEach(([columnName, value]) => {
+                  if (structuredData[columnName]) {
+                    // Include relevant row metadata with each value
+                    const rowMetadata = {};
+                    if (row.name) rowMetadata.name = row.name;
+                    if (row.createdAt) rowMetadata.createdAt = row.createdAt;
+                    
+                    structuredData[columnName].rows.push({
+                      ...rowMetadata,
+                      value
+                    });
+                  }
+                });
+              }
+            });
+            
+            // Add this table's structured data to the overall object
+            allTableData[table.name] = structuredData;
           }
         });
 
       console.log('Copied data for all tables:', allTableData);
-      navigator.clipboard.writeText(JSON.stringify(allTableData, null, 2));
-      alert('All table data copied to clipboard!');
+      await navigator.clipboard.writeText(JSON.stringify(allTableData, null, 2));
+      showToast('All table data copied to clipboard!', 'success');
     } catch (err) {
       console.error('Error copying all tables:', err);
       setError('Failed to copy all tables. Please try again.');
+      showToast('Failed to copy data', 'error');
+    } finally {
+      setCopyLoading(false);
     }
   };
 
@@ -130,20 +200,23 @@ const CodaDocScraper = () => {
     setSelectedTables(new Set());
     setTableData({});
     setError('');
+    setApiTokenError('');
+    setDocIdError('');
     localStorage.removeItem('codaApiToken');
     localStorage.removeItem('codaDocId');
+    showToast('Reset successful', 'success');
+  };
+  
+  // Show toast message
+  const showToast = (message, type = 'success') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3000);
   };
 
-  // Filter data based on selected attributes and remove null/blank values
-  const filterData = (data, selectedAttributes) => {
-    return data.map((item) =>
-      Object.fromEntries(
-        Object.entries(item)
-          .filter(([key]) => selectedAttributes.includes(key))
-          .filter(([, value]) => value !== null && value !== '' && value !== undefined)
-      )
-    );
-  };
+  // This function is no longer needed since the TableCard component
+  // handles all filtering with ID-to-name mapping and nested object simplification
+  // eslint-disable-next-line no-unused-vars
+  const filterData = () => {};
 
   return (
     <div className="flex justify-center items-center min-h-screen bg-gray-50 p-4">
@@ -164,11 +237,17 @@ const CodaDocScraper = () => {
                 <input
                   type="password"
                   value={apiToken}
-                  onChange={(e) => setApiToken(e.target.value)}
-                  className="w-full p-2 border rounded-md mt-1"
+                  onChange={(e) => {
+                    setApiToken(e.target.value);
+                    setApiTokenError('');
+                  }}
+                  className={`w-full p-2 border rounded-md mt-1 ${apiTokenError ? 'border-red-500' : ''}`}
                   placeholder="Enter your Coda API token"
                 />
               </label>
+              {apiTokenError && (
+                <p className="text-red-500 text-xs mt-1">{apiTokenError}</p>
+              )}
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -176,11 +255,17 @@ const CodaDocScraper = () => {
                 <input
                   type="text"
                   value={docId}
-                  onChange={(e) => setDocId(e.target.value)}
-                  className="w-full p-2 border rounded-md mt-1"
+                  onChange={(e) => {
+                    setDocId(e.target.value);
+                    setDocIdError('');
+                  }}
+                  className={`w-full p-2 border rounded-md mt-1 ${docIdError ? 'border-red-500' : ''}`}
                   placeholder="Enter your Coda Document ID"
                 />
               </label>
+              {docIdError && (
+                <p className="text-red-500 text-xs mt-1">{docIdError}</p>
+              )}
             </div>
             <div className="flex space-x-4">
               <button
@@ -270,11 +355,20 @@ const CodaDocScraper = () => {
               <div className="flex justify-center">
                 <button
                   onClick={handleCopyAllTables}
-                  disabled={selectedTables.size === 0}
+                  disabled={selectedTables.size === 0 || copyLoading}
                   className="px-3 py-1.5 bg-green-500 text-white rounded-md hover:bg-green-600 disabled:bg-green-300 disabled:cursor-not-allowed flex items-center justify-center"
                 >
-                  <CopyIcon className="h-4 w-4 mr-2" />
-                  Copy All Tables
+                  {copyLoading ? (
+                    <>
+                      <LoadingSpinner className="h-4 w-4 mr-2" />
+                      Copying...
+                    </>
+                  ) : (
+                    <>
+                      <CopyIcon className="h-4 w-4 mr-2" />
+                      Copy All Tables
+                    </>
+                  )}
                 </button>
               </div>
             </div>
@@ -307,6 +401,9 @@ const CodaDocScraper = () => {
 
         {/* Error Display */}
         {error && <ErrorDisplay error={error} />}
+
+        {/* Toast Notification */}
+        {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
       </div>
     </div>
   );
