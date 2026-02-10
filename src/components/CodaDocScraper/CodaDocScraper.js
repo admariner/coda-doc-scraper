@@ -166,15 +166,16 @@ const CodaDocScraper = () => {
       });
       setSelectedTables(selectedTableSet);
       
-      // Automatically fetch data for all selected tables with default row count
+      // Automatically fetch data for all selected tables sequentially to avoid rate limits
       const nonViewTables = tablesWithRowCount.filter(t => !t.isView);
-      console.log(`Auto-fetching data for ${nonViewTables.length} non-view tables`);
-      nonViewTables.forEach((table, index) => {
-        console.log(`Scheduling fetch for table "${table.name}" (${table.id}) with delay ${100 * index}ms`);
-        setTimeout(() => {
-          handleSelectRowsOption(table.id, '1');
-        }, 100 * index);
-      });
+      console.log(`Auto-fetching data for ${nonViewTables.length} non-view tables (sequentially)`);
+      (async () => {
+        for (const table of nonViewTables) {
+          console.log(`Fetching data for table "${table.name}" (${table.id})`);
+          await handleSelectRowsOption(table.id, '1');
+        }
+        console.log('All tables fetched successfully');
+      })();
     } catch (err) {
       console.error('Error fetching tables:', err);
       setError('Failed to fetch tables. Please check your API token and document ID.');
