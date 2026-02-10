@@ -167,13 +167,13 @@ const CodaDocScraper = () => {
       setSelectedTables(selectedTableSet);
       
       // Automatically fetch data for all selected tables with default row count
-      tablesWithRowCount.forEach(table => {
-        if (!table.isView) {
-          // Add a slight delay to prevent hitting API rate limits
-          setTimeout(() => {
-            handleSelectRowsOption(table.id, '1');
-          }, 100 * tablesWithRowCount.indexOf(table));
-        }
+      const nonViewTables = tablesWithRowCount.filter(t => !t.isView);
+      console.log(`Auto-fetching data for ${nonViewTables.length} non-view tables`);
+      nonViewTables.forEach((table, index) => {
+        console.log(`Scheduling fetch for table "${table.name}" (${table.id}) with delay ${100 * index}ms`);
+        setTimeout(() => {
+          handleSelectRowsOption(table.id, '1');
+        }, 100 * index);
       });
     } catch (err) {
       console.error('Error fetching tables:', err);
@@ -345,8 +345,10 @@ const CodaDocScraper = () => {
   // Fetch columns for a table and add to columnsData state
   const fetchColumnsForTable = async (tableId) => {
     try {
+      const url = `https://coda.io/apis/v1/docs/${docId}/tables/${tableId}/columns`;
+      console.log(`[fetchColumns] GET ${url}`);
       const response = await axios.get(
-        `https://coda.io/apis/v1/docs/${docId}/tables/${tableId}/columns`,
+        url,
         { headers: { Authorization: `Bearer ${apiToken}` } }
       );
       
@@ -364,7 +366,7 @@ const CodaDocScraper = () => {
       
       return response.data.items;
     } catch (err) {
-      console.error(`Error fetching columns for table ${tableId}:`, err);
+      console.error(`[fetchColumns] Error for table ${tableId}:`, err.response?.status, err.response?.data || err.message);
       setError(`Failed to fetch columns for table. ${err.message}`);
       return [];
     }
@@ -616,8 +618,10 @@ const CodaDocScraper = () => {
       
       // Fetch rows
       const limit = rowCount === 'All' ? undefined : parseInt(rowCount, 10);
+      const rowUrl = `https://coda.io/apis/v1/docs/${docId}/tables/${tableId}/rows`;
+      console.log(`[fetchRows] GET ${rowUrl} (limit: ${limit})`);
       const response = await axios.get(
-        `https://coda.io/apis/v1/docs/${docId}/tables/${tableId}/rows`,
+        rowUrl,
         {
           headers: { Authorization: `Bearer ${apiToken}` },
           params: { limit, valueFormat: 'simpleWithArrays' },
@@ -642,7 +646,7 @@ const CodaDocScraper = () => {
       // Update preview JSON
       updatePreviewJson();
     } catch (err) {
-      console.error(`Error fetching rows for table ${tableId}:`, err);
+      console.error(`[fetchRows] Error for table ${tableId}:`, err.response?.status, err.response?.data || err.message);
       setError(`Failed to fetch rows for table. ${err.message}`);
       
       // Set loading status to error
