@@ -151,22 +151,13 @@ const CodaDocScraper = () => {
         { headers: { Authorization: `Bearer ${apiToken}` } }
       );
 
-      // Fetch row counts for each table
-      const tablesWithRowCount = await Promise.all(
-        tablesResponse.data.items.map(async (table) => {
-          const tableDetails = await axios.get(
-            `https://coda.io/apis/v1/docs/${docId}/tables/${table.id}`,
-            { headers: { Authorization: `Bearer ${apiToken}` } }
-          );
-          return { 
-            ...table, 
-            rowCount: tableDetails.data.rowCount,
-            updatedAt: tableDetails.data.updatedAt || new Date().toISOString(),
-            // Check if this is a view based on tableType
-            isView: tableDetails.data.tableType === 'view'
-          };
-        })
-      );
+      // Use rowCount and tableType from the list tables response directly
+      const tablesWithRowCount = tablesResponse.data.items.map((table) => ({
+        ...table,
+        rowCount: table.rowCount,
+        updatedAt: table.updatedAt || new Date().toISOString(),
+        isView: table.tableType === 'view'
+      }));
 
       console.log('Fetched tables with row counts:', tablesWithRowCount);
       setTables(tablesWithRowCount);
@@ -200,6 +191,16 @@ const CodaDocScraper = () => {
         }
       });
       setSelectedTables(selectedTableSet);
+      
+      // Automatically fetch data for all selected tables with default row count
+      tablesWithRowCount.forEach(table => {
+        if (!table.isView) {
+          // Add a slight delay to prevent hitting API rate limits
+          setTimeout(() => {
+            handleSelectRowsOption(table.id, '1');
+          }, 100 * tablesWithRowCount.indexOf(table));
+        }
+      });
     } catch (err) {
       console.error('Error fetching tables:', err);
       setError('Failed to fetch tables. Please check your API token and document ID.');
@@ -620,6 +621,11 @@ const CodaDocScraper = () => {
     if (!table) return;
     
     try {
+      // Make sure we have columns data
+      if (!columnsData[tableId]) {
+        await fetchColumnsForTable(tableId);
+      }
+      
       // Skip row fetch if "Columns Only" is selected
       if (rowCount === '0') {
         // Update tableData with empty rows
@@ -629,6 +635,12 @@ const CodaDocScraper = () => {
             ...prev[tableId],
             rows: []
           }
+        }));
+        
+        // Set loading status to loaded
+        setTableLoadingStatus(prev => ({
+          ...prev,
+          [tableId]: 'loaded'
         }));
         
         // Update preview JSON
@@ -655,11 +667,23 @@ const CodaDocScraper = () => {
         }
       }));
       
+      // Set loading status to loaded
+      setTableLoadingStatus(prev => ({
+        ...prev,
+        [tableId]: 'loaded'
+      }));
+      
       // Update preview JSON
       updatePreviewJson();
     } catch (err) {
       console.error(`Error fetching rows for table ${tableId}:`, err);
       setError(`Failed to fetch rows for table. ${err.message}`);
+      
+      // Set loading status to error
+      setTableLoadingStatus(prev => ({
+        ...prev,
+        [tableId]: 'error'
+      }));
     }
   };
   
@@ -720,6 +744,9 @@ const CodaDocScraper = () => {
     const columns = columnsData[tableId] || [];
     const rows = data.rows || [];
     const selectedColIds = selectedColumns[tableId] || [];
+    
+    // If no columns have been loaded yet, return an empty object
+    if (columns.length === 0) return {};
     
     // Get effective attributes for this table
     const effectiveColumnAttrs = getEffectiveColumnAttributes(tableId);
