@@ -2,18 +2,15 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
-import TableCard from './TableCard';
 import Header from '../Header';
 import WelcomeCard from '../WelcomeCard';
 import ErrorDisplay, { Toast } from '../ErrorDisplay';
 import SkeletonLoader from './SkeletonLoader';
 import { CopyIcon, RefreshIcon, LoadingSpinner, DownloadIcon, ZipIcon } from '../DataDisplay/Icons';
-import AttributeSelector from './AttributeSelector';
 import JsonPreviewPanel from '../DataDisplay/JsonPreviewPanel';
 import TableListView from './TableListView';
 import ColumnFilter from './ColumnFilter';
 import FormatToggle from './FormatToggle';
-import SavedDocsDropdown from './SavedDocsDropdown';
 import SavedDocManager from './SavedDocManager';
 import GlobalAttributeSelector from './GlobalAttributeSelector';
 import TableAttributeOverrides from './TableAttributeOverrides';
@@ -62,21 +59,6 @@ const CodaDocScraper = () => {
   const [tableRowOverrides, setTableRowOverrides] = useState({});
   const [showAttributeSettings, setShowAttributeSettings] = useState(false);
 
-  // State for selected column and row attributes
-  const [selectedColumnAttributes, setSelectedColumnAttributes] = useState([
-    'id',
-    'name',
-    'display',
-    'format',
-    'formula',
-    'defaultValue',
-  ]);
-  const [selectedRowAttributes, setSelectedRowAttributes] = useState([
-    'id',
-    'values',
-    'createdAt',
-  ]);
-
   // Save API token and docId to localStorage
   useEffect(() => {
     localStorage.setItem('codaApiToken', apiToken);
@@ -89,14 +71,6 @@ const CodaDocScraper = () => {
   // State for managing document selection
   const [showDocManager, setShowDocManager] = useState(true);
   
-  // Callback to update tableData when filtered data changes in a TableCard
-  const onTableDataChange = (tableId, filteredData) => {
-    setTableData((prev) => ({
-      ...prev,
-      [tableId]: filteredData,
-    }));
-  };
-
   // Validate inputs
   const validateInputs = () => {
     let isValid = true;
@@ -355,14 +329,6 @@ const CodaDocScraper = () => {
     setShowDocManager(false);
     
     showToast(`Loaded document: ${doc.docName}`, 'success');
-  };
-  
-  // Handle "Add New Document" button
-  const handleAddNewDoc = () => {
-    setApiToken('');
-    setDocId('');
-    setDocName('');
-    setShowDocManager(false);
   };
   
   // Show toast message
@@ -844,11 +810,6 @@ const CodaDocScraper = () => {
       
       return structuredData;
     }
-  };
-  
-  // Toggle showing the column filter for a specific table
-  const toggleColumnFilter = (tableId) => {
-    setShowColumnFilter(current => current === tableId ? null : tableId);
   };
   
   // Handle column selection change

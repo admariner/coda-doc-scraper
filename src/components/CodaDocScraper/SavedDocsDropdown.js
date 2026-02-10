@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { TrashIcon, RefreshIcon } from '../DataDisplay/Icons';
+import { TrashIcon } from '../DataDisplay/Icons';
 
 const SavedDocsDropdown = ({ savedDocs, onSelect, onRemove, onAddNew }) => {
   const [isOpen, setIsOpen] = useState(false);

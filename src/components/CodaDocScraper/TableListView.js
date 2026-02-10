@@ -1,5 +1,5 @@
 import React from 'react';
-import { CopyIcon, LoadingSpinner, RefreshIcon, DownloadIcon } from '../DataDisplay/Icons';
+import { CopyIcon, LoadingSpinner, DownloadIcon } from '../DataDisplay/Icons';
 
 const TableListView = ({
   tables,
